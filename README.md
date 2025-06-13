@@ -11,4 +11,4 @@ The data retrieved aboards the following:
 -Oxygen saturation
 -Gas concentration
 
-![3D Model](Photos/IoT health station.jpg)
+![3D Model](Photos/3Dmodel.jpg)
