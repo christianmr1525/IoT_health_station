@@ -10,3 +10,5 @@ The data retrieved aboards the following:
 -Heart rate
 -Oxygen saturation
 -Gas concentration
+
+![3D Model](Photos/IoT health station.jpg)
