@@ -11,4 +11,4 @@ The data retrieved aboards the following:
 -Oxygen saturation
 -Gas concentration
 
-![3D Model](Photos/3Dmodel.jpg)
+![3D Model](Photos/3D_model.jpg)
