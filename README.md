@@ -30,12 +30,13 @@ This project is a full-stack IoT-based health monitoring station, built entirely
     ↓
 [Database + Web Dashboard]
 ```
+## ✅ Results
 
 ![3D Model](Photos/3D_model.jpg)
 
 The 3D model, pcb, programming and comissioning was built from scratch.
 
-The result is shown below:
+The functional system is shown below:
 
 ![Health Station result](Photos/Health_Station_result.jpg)
 
