@@ -19,17 +19,7 @@ This project is a full-stack IoT-based health monitoring station, built entirely
 | 3D Modeling    | SolidWorks               |
 
 ---
-
 ## 🖥️ System Architecture
-
-![3D Model](Photos/3D_model.jpg)
-
-The 3D model, pcb, programming and comissioning was built from scratch.
-
-The result is shown below:
-
-![Health Station result](Photos/Health_Station_result.jpg)
-
 
 ```text
 [Sensors]
@@ -39,5 +29,14 @@ The result is shown below:
 [Python Backend on Azure]
     ↓
 [Database + Web Dashboard]
+```
+
+![3D Model](Photos/3D_model.jpg)
+
+The 3D model, pcb, programming and comissioning was built from scratch.
+
+The result is shown below:
+
+![Health Station result](Photos/Health_Station_result.jpg)
 
 
