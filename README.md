@@ -46,9 +46,11 @@ The design, assembled system and website is shown below:
 
 ## 🔭 Future Improvements
 
-- Upgrade sensor quality for higher accuracy and reliability
-- Integrate with additional IoT nodes to support large-scale systems
-- Add AI/ML for anomaly detection or predictive health analytics
-- Expand compatibility with wearable or remote monitoring devices
+The system could be improved or customized based on client-specific requirements. General enhancements may include:
+
+- Upgrading sensor quality for higher accuracy and long-term reliability
+- Integrating additional IoT nodes to support large-scale or multi-room deployments
+- Adding AI/ML capabilities for anomaly detection and predictive health analytics
+- Expanding compatibility with wearable devices or remote patient monitoring platforms
 
 
