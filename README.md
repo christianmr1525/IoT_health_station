@@ -30,6 +30,8 @@ This project is a full-stack IoT-based health monitoring station, built entirely
     ↓
 [Database + Web Dashboard]
 ```
+
+---
 ## ✅ Results
 
 The design, assembled system and website is shown below:
@@ -39,5 +41,14 @@ The design, assembled system and website is shown below:
 ![Health Station result](Photos/Health_Station_result.jpg)
 
 ![Website](Photos/website.png)
+
+---
+
+## 🔭 Future Improvements
+
+- Upgrade sensor quality for higher accuracy and reliability
+- Integrate with additional IoT nodes to support large-scale systems
+- Add AI/ML for anomaly detection or predictive health analytics
+- Expand compatibility with wearable or remote monitoring devices
 
 
