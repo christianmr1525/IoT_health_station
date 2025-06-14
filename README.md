@@ -1,17 +1,26 @@
-# IoT health station
+# IoT Health Monitoring Station
 
 This project consisted on creating an health monitoring embedded system using a ESP32 microcontroller.
 
-Three sensors are supposed to be providing body and environment data to be streamed in real-time to a web dashboard using Python, MQTT and a backend database linked to an Azure Server.
+This project is a full-stack IoT-based health monitoring station, built entirely from scratch using an ESP32 microcontroller. It integrates multiple biomedical and environmental sensors to collect and transmit real-time data to a web dashboard, enabling remote health and environmental monitoring.
 
-The data retrieved aboards the following:
-- Temperature
-- Humidity
-- Heart rate
-- Oxygen saturation
-- Gas concentration
+## 🧰 Tech Stack
 
-Putty and Arduino IDE were used to developed the code.
+| Component      | Technology/Tool          |
+|----------------|--------------------------|
+| Microcontroller| ESP32 DevKit V4          |
+| Sensors        | DHT11, MAX30102, MQ-135  |
+| Communication  | MQTT (Mosquitto broker)  |
+| Backend        | Python                   |
+| Database       | MySQL                    |
+| Cloud          | Microsoft Azure          |
+| Debugging Tools| Putty, Serial Monitor    |
+| PCB Design     | KiCad                    |
+| 3D Modeling    | SolidWorks               |
+
+---
+
+## 🖥️ System Architecture
 
 ![3D Model](Photos/3D_model.jpg)
 
@@ -20,3 +29,15 @@ The 3D model, pcb, programming and comissioning was built from scratch.
 The result is shown below:
 
 ![Health Station result](Photos/Health_Station_result.jpg)
+
+
+```text
+[Sensors]
+    ↓
+[ESP32 Microcontroller]
+    ↓ (MQTT)
+[Python Backend on Azure]
+    ↓
+[Database + Web Dashboard]
+
+
