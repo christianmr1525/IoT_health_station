@@ -4,7 +4,7 @@ This project consisted on creating an health monitoring embedded system using a 
 
 This project is a full-stack IoT-based health monitoring station, built entirely from scratch using an ESP32 microcontroller. It integrates multiple biomedical and environmental sensors to collect and transmit real-time data to a web dashboard, enabling remote health and environmental monitoring.
 
-## 🧰 Tech Stack
+## Tech Stack
 
 | Component      | Technology/Tool          |
 |----------------|--------------------------|
@@ -19,7 +19,7 @@ This project is a full-stack IoT-based health monitoring station, built entirely
 | 3D Modeling    | SolidWorks               |
 
 ---
-## 🖥️ System Architecture
+## System Architecture
 
 ```text
 [Sensors]
@@ -32,7 +32,7 @@ This project is a full-stack IoT-based health monitoring station, built entirely
 ```
 
 ---
-## ✅ Results
+## Results
 
 The design, assembled system and website is shown below:
 
@@ -44,7 +44,7 @@ The design, assembled system and website is shown below:
 
 ---
 
-## 🔭 Future Improvements
+## Future Improvements
 
 The system could be improved or customized based on client-specific requirements. General enhancements may include:
 
