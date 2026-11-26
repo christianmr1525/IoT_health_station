@@ -645,6 +645,31 @@
     refreshHistory();
   });
 
+  document.getElementById("btn-export-csv")?.addEventListener("click", () => {
+    if (!historyPoints || historyPoints.length === 0) return;
+    const cols = ["recorded_at", "bpm", "spo2_pct", "temperature_c", "humidity_pct", "air_quality_ppm", "signal_quality"];
+    const escapeCsv = (val) => {
+      if (val === null || val === undefined) return "";
+      const s = String(val);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [cols.join(",")];
+    for (const pt of historyPoints) {
+      lines.push(cols.map((c) => escapeCsv(pt[c])).join(","));
+    }
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const devSlug = (selectedDeviceId || "station").replace(/[^A-Za-z0-9._-]/g, "_");
+    const day = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `${devSlug}_${historyMinutes}m_${day}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
   document.getElementById("filter-current-station")?.addEventListener("change", (ev) => {
     filterCurrentStation = Boolean(ev.target.checked);
     renderAlerts(lastAlerts);

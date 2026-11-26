@@ -224,7 +224,13 @@ class TestStorageAndWebSecurity(unittest.TestCase):
                 {
                     "device_id": "station-living-01",
                     "seq": 1,
-                    "metrics": {"bpm": 128, "spo2_pct": 88.5, "temperature_c": 23.0, "humidity_pct": 45.0, "air_quality_ppm": 4.0},
+                    "metrics": {
+                        "bpm": 128,
+                        "spo2_pct": 88.5,
+                        "temperature_c": 23.0,
+                        "humidity_pct": 45.0,
+                        "air_quality_ppm": 4.0,
+                    },
                     "sensor_status": {"max30102": True, "dht11": True, "mq135": True},
                 }
             ),
@@ -312,15 +318,30 @@ class TestStorageAndWebSecurity(unittest.TestCase):
             "X-CSRF-Token": self.csrf_token,
             "Idempotency-Key": "ack-key-1",
         }
-        code, _, raw = self._request(f"/api/alerts/{alert_id}/ack", method="POST", headers=ack_headers, body=b'{"actor":"nurse"}')
+        code, _, raw = self._request(
+            f"/api/alerts/{alert_id}/ack",
+            method="POST",
+            headers=ack_headers,
+            body=b'{"actor":"nurse"}',
+        )
         self.assertEqual(code, 200)
         self.assertTrue(json.loads(raw)["alert"]["acknowledged"])
 
-        code, r_hdrs, _ = self._request(f"/api/alerts/{alert_id}/ack", method="POST", headers=ack_headers, body=b'{"actor":"nurse"}')
+        code, r_hdrs, _ = self._request(
+            f"/api/alerts/{alert_id}/ack",
+            method="POST",
+            headers=ack_headers,
+            body=b'{"actor":"nurse"}',
+        )
         self.assertEqual(code, 200)
         self.assertEqual(r_hdrs.get("idempotency-replayed"), "true")
 
-        code, _, _ = self._request(f"/api/alerts/{alert_id}/ack", method="POST", headers=ack_headers, body=b'{"actor":"different"}')
+        code, _, _ = self._request(
+            f"/api/alerts/{alert_id}/ack",
+            method="POST",
+            headers=ack_headers,
+            body=b'{"actor":"different"}',
+        )
         self.assertEqual(code, 409)
 
 

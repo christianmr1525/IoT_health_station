@@ -568,6 +568,12 @@ button:focus-visible, input:focus-visible {
   font-weight: 600;
 }
 
+.trace-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .window-group {
   display: flex;
   align-items: center;
@@ -575,6 +581,26 @@ button:focus-visible, input:focus-visible {
   border: 1px solid var(--rule);
   border-radius: 3px;
   padding: 2px;
+}
+
+.btn-export {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-export:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+  background: var(--surface-hover);
 }
 
 .wtab {

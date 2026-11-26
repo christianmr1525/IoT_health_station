@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iot-health-station"
+version = "2.0.0"
+description = "ESP32 biomedical & indoor air-quality monitoring station with hardened Python/SQLite backend and clinical instrument UI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "paho-mqtt>=2.0.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pip-audit>=2.7.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]
+ignore = ["B904"]

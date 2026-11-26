@@ -28,7 +28,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     parser = argparse.ArgumentParser(description="IoT Health & Environment Monitoring Station v2.0")
-    parser.add_argument("--demo", action="store_true", help="Run with built-in multi-station simulator (no broker needed)")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Run with built-in multi-station simulator (no broker needed)",
+    )
     parser.add_argument("--host", default=os.getenv("HEALTH_BIND_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("HEALTH_PORT", "8095")))
     parser.add_argument("--db", default=os.getenv("HEALTH_DB_PATH", "data/health_station.db"))
@@ -63,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         mqtt_worker = HealthMQTTWorker.from_env(pipeline)
         mqtt_worker.start()
-        mqtt_connected_fn = lambda: bool(mqtt_worker and mqtt_worker.connected)
+
+        def mqtt_connected_fn() -> bool:
+            return bool(mqtt_worker and mqtt_worker.connected)
 
     server, _csrf, actual_port = create_web_server(
         pipeline,

@@ -358,7 +358,8 @@ def _make_handler(
 
             resp_payload = {"alert": updated}
             if idem_key:
-                idempotency.store(idem_key, idempotency.hash_request(f"ack:{alert_id}", {"actor": actor}), 200, resp_payload)
+                idem_hash = idempotency.hash_request(f"ack:{alert_id}", {"actor": actor})
+                idempotency.store(idem_key, idem_hash, 200, resp_payload)
 
             pipeline.sse.publish("alert_ack", updated)
             self._send_json(resp_payload, HTTPStatus.OK)

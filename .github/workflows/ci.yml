@@ -17,16 +17,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install dependencies & linter
+        run: |
+          pip install -r requirements.txt
+          pip install ruff pip-audit
+      - name: Lint (ruff)
+        run: ruff check backend tests
       - name: Compile check
         run: python -m compileall -q backend tests
       - name: Run unit & security tests
         run: python -m unittest discover -s tests -v
       - name: Audit Python dependencies (pip-audit)
-        run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt
+        run: pip-audit -r requirements.txt
       - name: Scan Docker & Compose config (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -36,3 +38,23 @@ jobs:
           severity: "HIGH,CRITICAL"
           exit-code: "1"
           ignore-unfixed: true
+
+  firmware-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 core & sensor libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli lib install "MQTT" "MQUnifiedsensor" "DHT sensor library" "MAX3010x Sensor Library" "LiquidCrystal"
+      - name: Compile ESP32 firmware sketch
+        run: |
+          mkdir -p /tmp/IoT_health_station
+          cp Firmware/IoT_health_station.ino Firmware/filters.h /tmp/IoT_health_station/
+          cp Firmware/config.example.h /tmp/IoT_health_station/config.h
+          arduino-cli compile --fqbn esp32:esp32:esp32 /tmp/IoT_health_station
