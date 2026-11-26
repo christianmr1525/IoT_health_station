@@ -7,37 +7,38 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <header class="topbar">
+  <header class="inst-bar">
     <div class="brand">
       <div class="brand-mark" aria-hidden="true">HS</div>
-      <div>
+      <div class="brand-text">
         <h1>IoT Health &amp; Environment Station</h1>
-        <p class="subtitle">Telemetría biomédica &amp; calidad de aire interior · v2.0</p>
+        <p class="subtitle">Monitor biomédico &amp; calidad ambiental · v2.0</p>
       </div>
     </div>
     <div class="topbar-actions">
-      <span id="conn-badge" class="pill pill-muted">Conectando…</span>
-      <span id="demo-badge" class="pill pill-info hidden">DEMO EN VIVO</span>
-      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Cambiar tema">Tema</button>
+      <span id="conn-badge" class="pill pill-muted">CONECTANDO…</span>
+      <span id="demo-badge" class="pill pill-info hidden">SIMULACIÓN</span>
+      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Cambiar tema">Oscuro</button>
     </div>
   </header>
 
   <main class="container">
-    <section class="panel stations-bar" aria-label="Estaciones conectadas">
-      <div class="section-head">
-        <h2>Estaciones</h2>
+    <section class="panel control-strip" aria-label="Control de estaciones y hardware">
+      <div class="strip-row strip-top">
+        <div class="strip-label-group">
+          <span class="strip-label">ESTACIONES</span>
+          <div id="station-tabs" class="station-tabs"></div>
+        </div>
         <div id="totals-summary" class="totals-row num"></div>
       </div>
-      <div id="station-tabs" class="station-tabs"></div>
-    </section>
-
-    <section class="panel station-meta" id="station-meta" aria-label="Estado de hardware">
-      <div class="meta-left">
-        <span id="active-station-name" class="station-title">—</span>
-        <span id="active-station-status" class="pill pill-muted">—</span>
-        <span id="active-station-age" class="meta-detail num">—</span>
+      <div class="strip-row strip-sub">
+        <div class="meta-left">
+          <span id="active-station-name" class="station-title num">—</span>
+          <span id="active-station-status" class="pill pill-muted">—</span>
+          <span id="active-station-age" class="meta-detail num">—</span>
+        </div>
+        <div id="sensor-health" class="sensor-health"></div>
       </div>
-      <div id="sensor-health" class="sensor-health"></div>
     </section>
 
     <section class="cards-grid" id="metrics-grid" aria-label="Signos vitales y ambiente"></section>
@@ -62,18 +63,24 @@
           </div>
         </div>
         <div class="chart-wrap">
-          <svg id="history-chart" class="history-svg" viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label="Gráfica histórica"></svg>
+          <svg id="history-chart" class="history-svg" viewBox="0 0 760 220" preserveAspectRatio="none" role="img" aria-label="Gráfica histórica"></svg>
           <div id="chart-readout" class="chart-readout num"></div>
         </div>
       </section>
 
       <section class="panel alerts-panel" aria-label="Alertas clínicas">
         <div class="section-head">
-          <h2>Alertas Activas</h2>
-          <label class="toggle-inline">
-            <input type="checkbox" id="show-acked">
-            <span>Ver atendidas</span>
-          </label>
+          <h2>Alertas</h2>
+          <div class="controls-row">
+            <label class="toggle-inline">
+              <input type="checkbox" id="filter-current-station" checked>
+              <span>Solo estación</span>
+            </label>
+            <label class="toggle-inline">
+              <input type="checkbox" id="show-acked">
+              <span>Ver atendidas</span>
+            </label>
+          </div>
         </div>
         <div id="alerts-list" class="alerts-list"></div>
       </section>

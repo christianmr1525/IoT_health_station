@@ -9,8 +9,8 @@ from enum import Enum
 from typing import Any
 
 WELLNESS_DISCLAIMER = (
-    "Preventive wellness & environmental monitoring tool only. "
-    "Not a certified medical device; do not use for clinical diagnosis or emergency triage."
+    "Herramienta preventiva de bienestar y monitoreo ambiental. "
+    "No es un dispositivo médico certificado; no utilizar para diagnóstico clínico ni triaje de emergencias."
 )
 
 
@@ -33,16 +33,16 @@ class ClinicalFinding:
 def evaluate_metric(metric: str, value: float) -> ClinicalFinding:
     """Evaluate a single biomedical or environmental reading with clinical thresholds."""
     if metric == "spo2_pct":
-        # Clinical standard: <90% is severe hypoxemia, 90-94.9% is mild hypoxemia/warning
+        # Estándar clínico: <90% hipoxemia severa, 90-94.9% hipoxemia leve
         if value < 90.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "%", "HYPOXEMIA_SEVERE",
-                f"Severe hypoxemia: SpO2 {value:.1f}% (<90%)",
+                f"Hipoxemia severa: SpO2 {value:.1f}% (<90%)",
             )
         if value < 95.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "%", "HYPOXEMIA_MILD",
-                f"Low oxygen saturation: SpO2 {value:.1f}% (90-94.9%)",
+                f"Saturación baja: SpO2 {value:.1f}% (90–94.9%)",
             )
         return ClinicalFinding(metric, Severity.NORMAL, value, "%", "OK", "SpO2 normal")
 
@@ -50,58 +50,58 @@ def evaluate_metric(metric: str, value: float) -> ClinicalFinding:
         if value < 40.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "bpm", "BRADYCARDIA_SEVERE",
-                f"Severe bradycardia: {value:.0f} bpm (<40)",
+                f"Bradicardia severa: {value:.0f} bpm (<40)",
             )
         if value > 120.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "bpm", "TACHYCARDIA_SEVERE",
-                f"Severe tachycardia: {value:.0f} bpm (>120)",
+                f"Taquicardia severa: {value:.0f} bpm (>120)",
             )
         if value < 50.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "bpm", "BRADYCARDIA_MILD",
-                f"Low heart rate: {value:.0f} bpm (<50)",
+                f"Frecuencia cardíaca baja: {value:.0f} bpm (<50)",
             )
         if value > 100.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "bpm", "TACHYCARDIA_MILD",
-                f"Elevated heart rate: {value:.0f} bpm (>100)",
+                f"Frecuencia cardíaca elevada: {value:.0f} bpm (>100)",
             )
-        return ClinicalFinding(metric, Severity.NORMAL, value, "bpm", "OK", "Heart rate normal")
+        return ClinicalFinding(metric, Severity.NORMAL, value, "bpm", "OK", "Pulso normal")
 
     if metric == "air_quality_ppm":
         if value > 35.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "ppm", "AIR_HAZARDOUS",
-                f"Hazardous gas/CO concentration: {value:.1f} ppm (>35)",
+                f"Concentración peligrosa de gas/CO: {value:.1f} ppm (>35)",
             )
         if value > 10.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "ppm", "AIR_ELEVATED",
-                f"Elevated gas/CO concentration: {value:.1f} ppm (>10)",
+                f"Concentración elevada de gas/CO: {value:.1f} ppm (>10)",
             )
-        return ClinicalFinding(metric, Severity.NORMAL, value, "ppm", "OK", "Air quality normal")
+        return ClinicalFinding(metric, Severity.NORMAL, value, "ppm", "OK", "Calidad de aire normal")
 
     if metric == "temperature_c":
         if value < 10.0 or value > 34.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "°C", "TEMP_EXTREME",
-                f"Extreme ambient temperature: {value:.1f} °C",
+                f"Temperatura ambiental extrema: {value:.1f} °C",
             )
         if value < 18.0 or value > 28.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "°C", "TEMP_OUT_OF_COMFORT",
-                f"Ambient temperature outside comfort range: {value:.1f} °C",
+                f"Temperatura fuera de confort: {value:.1f} °C",
             )
-        return ClinicalFinding(metric, Severity.NORMAL, value, "°C", "OK", "Temperature normal")
+        return ClinicalFinding(metric, Severity.NORMAL, value, "°C", "OK", "Temperatura normal")
 
     if metric == "humidity_pct":
         if value < 30.0 or value > 60.0:
             return ClinicalFinding(
                 metric, Severity.WARNING, value, "% RH", "HUMIDITY_OUT_OF_RANGE",
-                f"Humidity outside ideal 30-60% range: {value:.1f}%",
+                f"Humedad fuera de rango ideal (30–60%): {value:.1f}%",
             )
-        return ClinicalFinding(metric, Severity.NORMAL, value, "% RH", "OK", "Humidity normal")
+        return ClinicalFinding(metric, Severity.NORMAL, value, "% RH", "OK", "Humedad normal")
 
     return ClinicalFinding(metric, Severity.NORMAL, value, "", "OK", "Normal")
 
@@ -142,7 +142,7 @@ class ClinicalAlertEvaluator:
                     value,
                     finding.unit,
                     "LOW_SIGNAL_QUALITY",
-                    f"Low sensor signal quality (SQI {sqi:.0%}); verify finger placement",
+                    f"Baja calidad de señal (SQI {sqi:.0%}); verifique posición del dedo",
                 )
 
             statuses[metric] = {
