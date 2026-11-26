@@ -3,93 +3,119 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IoT Health Station · Clinical &amp; Environmental Monitor</title>
+  <title>Health Station · Clinical &amp; Environmental Telemetry</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <header class="inst-bar">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true">HS</div>
-      <div class="brand-text">
-        <h1>IoT Health &amp; Environment Station</h1>
-        <p class="subtitle">Biomedical &amp; Indoor Air Quality Monitor · v2.0</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <span id="conn-badge" class="pill pill-muted">CONNECTING…</span>
-      <span id="demo-badge" class="pill pill-info hidden">SIMULATION</span>
-      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Toggle theme">Dark</button>
-    </div>
-  </header>
-
-  <main class="container">
-    <section class="panel control-strip" aria-label="Station and hardware control">
-      <div class="strip-row strip-top">
-        <div class="strip-label-group">
-          <span class="strip-label">STATIONS</span>
-          <div id="station-tabs" class="station-tabs"></div>
+  <div class="shell">
+    <aside class="rail" aria-label="Station Index and Hardware Ledger">
+      <div class="rail-head">
+        <div class="wordmark">
+          <span class="wm-title">HEALTH STATION</span>
+          <span class="wm-sub mono">v2.0 · TELEMETRY</span>
         </div>
-        <div id="totals-summary" class="totals-row num"></div>
-      </div>
-      <div class="strip-row strip-sub">
-        <div class="meta-left">
-          <span id="active-station-name" class="station-title num">—</span>
-          <span id="active-station-status" class="pill pill-muted">—</span>
-          <span id="active-station-age" class="meta-detail num">—</span>
+        <div class="rail-badges">
+          <span id="conn-badge" class="stream-pill is-muted"><i class="sdot"></i><span>CONNECTING</span></span>
+          <span id="demo-badge" class="micro-tag hidden">SIM</span>
         </div>
-        <div id="sensor-health" class="sensor-health"></div>
       </div>
-    </section>
 
-    <section class="cards-grid" id="metrics-grid" aria-label="Vitals and environment"></section>
+      <div class="rail-section rail-stations">
+        <div class="rail-kicker">
+          <span>STATIONS</span>
+          <span id="totals-summary" class="mono">0/0 ONLINE</span>
+        </div>
+        <nav id="station-tabs" class="station-index" aria-label="Stations"></nav>
+      </div>
 
-    <section class="split-layout">
-      <section class="panel chart-panel" aria-label="Historical trend">
-        <div class="section-head">
-          <h2>Historical Trend</h2>
-          <div class="controls-row">
-            <select id="metric-select" class="select" aria-label="Metric">
-              <option value="spo2_pct">SpO2 (%)</option>
-              <option value="bpm">Heart Rate (bpm)</option>
-              <option value="air_quality_ppm">Air Quality / CO (ppm)</option>
-              <option value="temperature_c">Temperature (°C)</option>
-              <option value="humidity_pct">Humidity (% RH)</option>
-            </select>
-            <div class="window-group" role="group" aria-label="Time window">
-              <button class="btn btn-tab is-active" data-minutes="15" type="button">15m</button>
-              <button class="btn btn-tab" data-minutes="60" type="button">1h</button>
-              <button class="btn btn-tab" data-minutes="360" type="button">6h</button>
+      <div class="rail-section rail-hw">
+        <div class="rail-kicker">
+          <span>HARDWARE LEDGER</span>
+          <span id="active-station-status" class="hw-status mono">—</span>
+        </div>
+        <dl class="ledger-dl mono" id="hw-ledger">
+          <div class="ledger-pair"><dt>Station</dt><dd id="active-station-name">—</dd></div>
+          <div class="ledger-pair"><dt>Last Packet</dt><dd id="active-station-age">—</dd></div>
+          <div class="ledger-pair"><dt>MAX30102</dt><dd id="hw-max">—</dd></div>
+          <div class="ledger-pair"><dt>DHT11</dt><dd id="hw-dht">—</dd></div>
+          <div class="ledger-pair"><dt>MQ-135</dt><dd id="hw-mq">—</dd></div>
+          <div class="ledger-pair"><dt>DLQ / Alerts</dt><dd id="hw-dlq">—</dd></div>
+        </dl>
+      </div>
+
+      <footer class="rail-foot">
+        <div class="foot-controls">
+          <div id="theme-seg" class="theme-seg mono" role="group" aria-label="Color theme">
+            <button class="tseg-btn is-active" data-theme-choice="dark" type="button">Dark</button>
+            <button class="tseg-btn" data-theme-choice="light" type="button">Light</button>
+          </div>
+          <span class="mono foot-port">127.0.0.1</span>
+        </div>
+        <p id="disclaimer-text" class="disclaimer">Preventive wellness and environmental monitoring tool only. Not a certified medical device.</p>
+      </footer>
+    </aside>
+
+    <main class="canvas">
+      <section class="zone zone-vitals" aria-label="Patient Vitals">
+        <div class="zone-bar">
+          <span class="zone-index mono">01 / PATIENT VITALS</span>
+          <span id="vitals-sqi-meta" class="zone-meta mono">SQI —</span>
+        </div>
+        <div id="vitals-grid" class="vitals-grid"></div>
+      </section>
+
+      <section class="zone zone-trace" aria-label="Live Trace">
+        <div class="zone-bar trace-bar">
+          <div class="trace-head-left">
+            <span class="zone-index mono">02 / LIVE TRACE</span>
+            <div id="metric-tabs" class="metric-tabs" role="tablist" aria-label="Metric trace">
+              <button class="mtab is-active" data-metric="spo2_pct" role="tab" type="button">SpO2</button>
+              <button class="mtab" data-metric="bpm" role="tab" type="button">Heart Rate</button>
+              <button class="mtab" data-metric="air_quality_ppm" role="tab" type="button">Air / CO</button>
+              <button class="mtab" data-metric="temperature_c" role="tab" type="button">Temperature</button>
+              <button class="mtab" data-metric="humidity_pct" role="tab" type="button">Humidity</button>
             </div>
           </div>
-        </div>
-        <div class="chart-wrap">
-          <svg id="history-chart" class="history-svg" viewBox="0 0 760 220" preserveAspectRatio="none" role="img" aria-label="Historical trend chart"></svg>
-          <div id="chart-readout" class="chart-readout num"></div>
-        </div>
-      </section>
-
-      <section class="panel alerts-panel" aria-label="Clinical alerts">
-        <div class="section-head">
-          <h2>Alerts</h2>
-          <div class="controls-row">
-            <label class="toggle-inline">
-              <input type="checkbox" id="filter-current-station" checked>
-              <span>Station only</span>
-            </label>
-            <label class="toggle-inline">
-              <input type="checkbox" id="show-acked">
-              <span>Show acknowledged</span>
-            </label>
+          <div class="window-group mono" role="group" aria-label="Time window">
+            <button class="wtab is-active" data-minutes="15" type="button">15m</button>
+            <button class="wtab" data-minutes="60" type="button">1h</button>
+            <button class="wtab" data-minutes="360" type="button">6h</button>
           </div>
         </div>
-        <div id="alerts-list" class="alerts-list"></div>
+        <div class="trace-stage">
+          <svg id="history-chart" class="history-svg" viewBox="0 0 860 220" role="img" aria-label="Historical telemetry trace"></svg>
+        </div>
+        <div id="chart-readout" class="trace-readout mono">—</div>
       </section>
-    </section>
-  </main>
 
-  <footer class="footer">
-    <p id="disclaimer-text">Preventive wellness and environmental monitoring tool only. Not a certified medical device.</p>
-  </footer>
+      <section class="zone-split">
+        <section class="zone zone-env" aria-label="Room Environment">
+          <div class="zone-bar">
+            <span class="zone-index mono">03 / ENVIRONMENT</span>
+            <span class="zone-meta mono">INDOOR SENSORS</span>
+          </div>
+          <div id="env-ledger" class="env-ledger"></div>
+        </section>
+
+        <section class="zone zone-events" aria-label="Event Log">
+          <div class="zone-bar">
+            <span class="zone-index mono">04 / EVENT LOG</span>
+            <div class="event-filters mono">
+              <label class="chk-inline">
+                <input type="checkbox" id="filter-current-station" checked>
+                <span>Station only</span>
+              </label>
+              <label class="chk-inline">
+                <input type="checkbox" id="show-acked">
+                <span>Acknowledged</span>
+              </label>
+            </div>
+          </div>
+          <div id="alerts-list" class="event-log"></div>
+        </section>
+      </section>
+    </main>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>
