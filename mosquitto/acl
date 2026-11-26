@@ -1,0 +1,7 @@
+# Per-role Mosquitto Topic ACLs (used when allow_anonymous false)
+user health_backend
+topic read health/devices/+/telemetry
+topic read health/devices/+/status
+
+pattern write health/devices/%u/telemetry
+pattern write health/devices/%u/status

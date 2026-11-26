@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoT Health Station · Monitor Clínico y Ambiental</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">HS</div>
+      <div>
+        <h1>IoT Health &amp; Environment Station</h1>
+        <p class="subtitle">Telemetría biomédica &amp; calidad de aire interior · v2.0</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span id="conn-badge" class="pill pill-muted">Conectando…</span>
+      <span id="demo-badge" class="pill pill-info hidden">DEMO EN VIVO</span>
+      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Cambiar tema">Tema</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel stations-bar" aria-label="Estaciones conectadas">
+      <div class="section-head">
+        <h2>Estaciones</h2>
+        <div id="totals-summary" class="totals-row num"></div>
+      </div>
+      <div id="station-tabs" class="station-tabs"></div>
+    </section>
+
+    <section class="panel station-meta" id="station-meta" aria-label="Estado de hardware">
+      <div class="meta-left">
+        <span id="active-station-name" class="station-title">—</span>
+        <span id="active-station-status" class="pill pill-muted">—</span>
+        <span id="active-station-age" class="meta-detail num">—</span>
+      </div>
+      <div id="sensor-health" class="sensor-health"></div>
+    </section>
+
+    <section class="cards-grid" id="metrics-grid" aria-label="Signos vitales y ambiente"></section>
+
+    <section class="split-layout">
+      <section class="panel chart-panel" aria-label="Tendencia histórica">
+        <div class="section-head">
+          <h2>Tendencia Histórica</h2>
+          <div class="controls-row">
+            <select id="metric-select" class="select" aria-label="Métrica">
+              <option value="spo2_pct">SpO2 (%)</option>
+              <option value="bpm">Pulso (bpm)</option>
+              <option value="air_quality_ppm">Calidad de aire / CO (ppm)</option>
+              <option value="temperature_c">Temperatura (°C)</option>
+              <option value="humidity_pct">Humedad (% RH)</option>
+            </select>
+            <div class="window-group" role="group" aria-label="Ventana de tiempo">
+              <button class="btn btn-tab is-active" data-minutes="15" type="button">15m</button>
+              <button class="btn btn-tab" data-minutes="60" type="button">1h</button>
+              <button class="btn btn-tab" data-minutes="360" type="button">6h</button>
+            </div>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <svg id="history-chart" class="history-svg" viewBox="0 0 760 240" preserveAspectRatio="none" role="img" aria-label="Gráfica histórica"></svg>
+          <div id="chart-readout" class="chart-readout num"></div>
+        </div>
+      </section>
+
+      <section class="panel alerts-panel" aria-label="Alertas clínicas">
+        <div class="section-head">
+          <h2>Alertas Activas</h2>
+          <label class="toggle-inline">
+            <input type="checkbox" id="show-acked">
+            <span>Ver atendidas</span>
+          </label>
+        </div>
+        <div id="alerts-list" class="alerts-list"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p id="disclaimer-text">Herramienta preventiva de bienestar y monitoreo ambiental. No es un dispositivo médico certificado.</p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
