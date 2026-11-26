@@ -1,599 +1,640 @@
-//////////////////////////// LIBRERIAS //////////////////////////////////////////////////////////
+/**
+ * IoT Health & Environment Monitoring Station v2.0 (ESP32 DevKit V4)
+ *
+ * Key architectural fixes over v1.0:
+ * 1. MAX30102 runs at matched 100 SPS without blocking 100 ms delays, preserving
+ *    digital filter cutoff accuracy, with moving average + SQI validation.
+ * 2. Thread-safe FreeRTOS design: sensor tasks push TelemetryFrame structs into
+ *    a FreeRTOS queue; only loop() owns WiFi/MQTT sockets (zero race conditions).
+ * 3. Offline-first 16x2 LCD updated directly from local spinlock-protected cache.
+ * 4. Non-blocking WiFi/MQTT reconnect with exponential backoff (1s -> 30s) and
+ *    graceful sensor degradation (no while(1) boot freezes).
+ * 5. 32-frame RAM ring buffer (store-and-forward) during network outages.
+ * 6. Structured JSON payloads + MQTT Last Will and Testament (LWT) status.
+ */
 
-#include <WiFi.h>               // Librería para conexión WiFi
-#include <WiFiMulti.h>          // Librería para gestionar múltiples redes WiFi
-#include <MQUnifiedsensor.h>    // Librería para sensor MQ-135
-#include <MQTT.h>               // Librería para comunicación MQTT
-#include <DHT.h>                // Librería para sensor DHT
-#include <MAX3010x.h>           // Librería para sensor MAX3010x (frecuencia cardíaca y SpO2)
-#include <LiquidCrystal.h>      // Librería para controlar LCD
-#include "filters.h"            // Archivo con filtros para el procesamiento de señales
-#include "data.h"               // Archivo para almacenamiento o gestión de datos (wifi contrasenas y usuarios, brokerMQTT)
+#include <WiFi.h>
+#include <WiFiMulti.h>
+#if USE_TLS
+#include <WiFiClientSecure.h>
+#endif
+#include <MQUnifiedsensor.h>
+#include <MQTT.h>
+#include <DHT.h>
+#include <MAX3010x.h>
+#include <LiquidCrystal.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
 
-//////////////////////////// DATOS DEFINE //////////////////////////////////////////////////////////
+#include "filters.h"
+#include "config.h"
 
-#define placa "ESP-32"                  // Nombre de la placa utilizada
-#define Voltage_Resolution 3.3          // Resolución de voltaje del ADC (en volts)
-#define type "MQ-135"                   // Tipo de sensor MQ utilizado
-#define ADC_Bit_Resolution 12           // Resolución del ADC del ESP32
-#define RatioMQ135CleanAir 3.6          // Relación estándar en aire limpio para calibrar el MQ-135
+// ---------------------------- HARDWARE CONSTANTS ----------------------------
+#define BOARD_NAME "ESP-32"
+#define ADC_VOLTAGE_RES 3.3
+#define MQ_TYPE "MQ-135"
+#define ADC_BITS 12
+#define RATIO_MQ135_CLEAN_AIR 3.6
 
-//////////////////////////// OBJETOS Wifi y MQTT //////////////////////////////////////////////////////////
+// ---------------------------- NETWORKING & MQTT -----------------------------
+WiFiMulti wifiMulti;
+#if USE_TLS
+WiFiClientSecure netClient;
+#else
+WiFiClient netClient;
+#endif
+MQTTClient mqttClient(512);
 
-WiFiMulti wifiMulti;         // Objeto para gestionar múltiples redes WiFi
-WiFiClient net;              // Cliente de red para conexión MQTT
-MQTTClient clienteMQTT;      // Cliente MQTT para publicar y suscribirse a mensajes
+static char topicTelemetry[128];
+static char topicStatus[128];
 
-//////////////////////////// OBJETOS FreeRTOS //////////////////////////////////////////////////////////
+static unsigned long nextReconnectAttemptMs = 0;
+static unsigned long reconnectBackoffMs = 1000;
+static const unsigned long kMaxBackoffMs = 30000;
+static uint32_t seqCounter = 0;
 
-TaskHandle_t TaskMAX30105Handle = NULL;
-bool lecturaActiva = true;
+// ---------------------------- FREERTOS SYNC ---------------------------------
+typedef struct {
+  bool has_bpm;
+  bool has_spo2;
+  bool has_temp;
+  bool has_hum;
+  bool has_air;
+  float bpm;
+  float spo2_pct;
+  float signal_quality;
+  float temperature_c;
+  float humidity_pct;
+  float air_quality_ppm;
+  bool max_ok;
+  bool dht_ok;
+  bool mq_ok;
+  bool mq_warmup;
+  bool finger_detected;
+  unsigned long uptime_ms;
+} TelemetryFrame;
 
-//////////////////////////// CONEXION PINES IO //////////////////////////////////////////////////////////
+static QueueHandle_t telemetryQueue = NULL;
+static TaskHandle_t taskMaxHandle = NULL;
+static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 
-#define MQ_pin 32                             // Pin analógico al que está conectado el sensor MQ135
-LiquidCrystal lcd(4, 5, 25, 27, 14, 13);      // Configuración del LCD: RS = 4, E = 5, D4 = 25, D5 = 27, D6 = 14, D7 = 13
-int DHT_pin = 23;                             // Pin digital al que está conectado el sensor DHT11
+typedef struct {
+  bool max_ok;
+  bool dht_ok;
+  bool mq_ok;
+  bool mq_warmup;
+  bool finger_detected;
+  bool has_bpm;
+  bool has_spo2;
+  bool has_temp;
+  bool has_hum;
+  bool has_air;
+  float bpm;
+  float spo2_pct;
+  float signal_quality;
+  float temperature_c;
+  float humidity_pct;
+  float air_quality_ppm;
+} LocalState;
 
-//////////////////////////// MQTT Topicos //////////////////////////////////////////////////////////////
+static LocalState sharedState = {
+  false, false, false, true, false,
+  false, false, false, false, false,
+  0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f
+};
 
-String publish_topic = "/Clase";              // Topico en donde se publica mensaje
-String suscribe_topic = "DB_last_values";     // Topico al cual se suscribe el ESP32
+// ---------------------------- RING BUFFER (OFFLINE) -------------------------
+#define RING_CAP 32
+#define JSON_BUF_SIZE 448
 
-//////////////////////////// VARIABLES LCD /////////////////////////////////////////////////////////////
+typedef struct {
+  char payloads[RING_CAP][JSON_BUF_SIZE];
+  size_t head;
+  size_t tail;
+  size_t count;
+} TelemetryRingBuffer;
 
-// Ultimos valores a mostrar en LCD
-String lcd_temperature = ""; // Último valor de temperatura recibido para mostrar en el LCD
-String lcd_humidity = "";    // Último valor de humedad recibido para mostrar en el LCD
-String lcd_gas = "";         // Último valor de concentración de gas (CO) recibido para mostrar en el LCD
-String lcd_bpm = "";         // Último valor de frecuencia cardíaca (bpm) recibido para mostrar en el LCD
-String lcd_spo2 = "";        // Último valor de saturación de oxígeno (SpO2) recibido para mostrar en el LCD
+static TelemetryRingBuffer offlineRing = {{{0}}, 0, 0, 0};
 
-// Control de transicion de mensajes 
-unsigned long lastUpdateTime = 0;           // Marca de tiempo de la última actualización de pantalla
-const unsigned long updateInterval = 3000;  // Intervalo de tiempo para cambiar entre pantallas (en millisegundos)
-int screenIndex = 0;                        // Índice para determinar qué pantalla se muestra actualmente
-
-//////////////////////////// TIEMPOS DE MUESTREO DE SENSORES ///////////////////////////////////////////
-
-unsigned long lastTempHumRead = 0;    // Tiempo de la última lectura de temperatura y humedad
-unsigned long lastCORead = 0;         // Tiempo de la última lectura del sensor de CO
-
-const unsigned long tempHumInterval = 20 * 1000;  // Intervalo entre lecturas de temperatura y humedad (en milisegundos)
-const unsigned long coInterval     = 10 * 1000;   // Intervalo entre lecturas del sensor de CO (en milisegundos)
-
-bool newTempHumData = false;    // Bandera para indicar que hay nuevos datos de temperatura y humedad disponibles
-bool newCO2Data = false;        // Bandera para indicar que hay nuevos datos del sensor de CO disponibles
-
-//////////////////////////// VARIABLES MQ-135 //////////////////////////////////////////////////////////
-
-// Objeto para el sensor de calidad del aire MQ135 
-MQUnifiedsensor MQ135(placa, Voltage_Resolution, ADC_Bit_Resolution, MQ_pin, type);  // (placa, resolución de voltaje, resolución del ADC, pin de conexión, tipo de gas)
-
-float gas;    // Variable para almacenar la concentración del gas detectado (en este caso, CO en ppm)
-
-//////////////////////////// VARIABLES DHT11 //////////////////////////////////////////////////////////
-
-DHT dht(DHT_pin, DHT11);  // Objeto para el sensor DHT11 conectado al pin especificado
-float temperature;        // Variable para almacenar la temperatura (Celsius)
-float humidity;           // Variable para almacenar la humedad (%)
-
-//////////////////////////// VARIABLES MAX30105 ///////////////////////////////////////////////////////
-
-MAX30105 sensor;                // Objeto para controlar el sensor MAX30105   
-bool newMAX30105Data = false;   // Bandera que indica si hay nuevos datos procesados disponibles
-
-// Configuración de muestreo
-const auto kSamplingRate = sensor.SAMPLING_RATE_400SPS;   // Tasa de muestreo: 400 muestras por segundo
-const float kSamplingFrequency = 400.0;                   // Frecuencia de muestreo en Hz (para filtros)
-
-// Detección de dedo
-const unsigned long kFingerThreshold = 10000;           // Umbral mínimo de luz reflejada para considerar que hay un dedo
-const unsigned int kFingerCooldownMs = 500;             // Tiempo de espera en ms para confirmar/remover la presencia del dedo
-
-// Umbral para detección de latido (ajustar para sensores como el MAX30100)
-const float kEdgeThreshold = -2000.0;   // Umbral de caída para detectar el pulso cardíaco
-
-// Parámetros de los filtros
-const float kLowPassCutoff = 5.0;     // Frecuencia de corte para el filtro pasa bajas (Hz)
-const float kHighPassCutoff = 0.5;    // Frecuencia de corte para el filtro pasa altas (Hz)
-
-// Promedio móvil
-const bool kEnableAveraging = false;    // Habilita o deshabilita el uso de promedios
-const int kAveragingSamples = 5;        // Número de muestras para el promedio móvil
-const int kSampleThreshold = 5;         // Muestras mínimas necesarias antes de mostrar el promedio
-
-// Instancias de filtros
-LowPassFilter low_pass_filter_red(kLowPassCutoff, kSamplingFrequency);    // Filtro pasa bajas para señal roja
-LowPassFilter low_pass_filter_ir(kLowPassCutoff, kSamplingFrequency);     // Filtro pasa bajas para señal IR 
-HighPassFilter high_pass_filter(kHighPassCutoff, kSamplingFrequency);     // Filtro pasa altas para eliminar DC
-Differentiator differentiator(kSamplingFrequency);        // Derivada para detectar cruce por cero
-MovingAverageFilter<kAveragingSamples> averager_bpm;      // Filtro promedio móvil para BPM
-MovingAverageFilter<kAveragingSamples> averager_r;        // Filtro promedio móvil para valor R
-MovingAverageFilter<kAveragingSamples> averager_spo2;     // Filtro promedio móvil para SpO2
-
-// Estadisticas para el calculo de oximetria
-MinMaxAvgStatistic stat_red;    // Estadísticas para señal roja
-MinMaxAvgStatistic stat_ir;     // Estadísticas para señal IR
-
-// Coeficientes de calibración para calcular SpO2 a partir del valor R
-// See https://www.maximintegrated.com/en/design/technical-documents/app-notes/6/6845.html
-float kSpO2_A = 1.5958422;
-float kSpO2_B = -34.6596622;
-float kSpO2_C = 112.6898759;
-
-// Timestamp del último latido detectado
-long last_heartbeat = 0;
-
-// Timestamp para la última detección de dedo
-long finger_timestamp = 0;
-bool finger_detected = false;
-
-// Último valor derivado para detectar cruce por cero
-float last_diff = NAN;
-bool crossed = false;   // Indica si se cruzó el cero recientemente
-long crossed_time = 0;  // Tiempo en que ocurrió el cruce
-
-float bpm;    // Frecuencia cardíaca 
-float r;      // Valor R (relación de amplitudes entre señales roja e infrarroja)
-float spo2;   // Nivel de oxígeno en sangre (SpO2)
-
-// Variables promediadas
-float average_bpm;
-float average_r;
-float average_spo2;
-
-/////////////////// FUNCIONES MQTT y WiFi //////////////////////////////////////////////////////////////
-
-// Funcion para conexion al WiFi y al MQTT
-void conectar(){  
-  Serial.print("Conectando con WiFi...");
-  lcd.clear();
-  lcd.print("Conectando a");
-  lcd.setCursor(0, 1);
-  lcd.print("WiFi......");
-  lcd.setCursor(0, 0);
-  delay(1000);
-
-  // Espera hasta que se conecte a una de las redes WiFi disponibles en wifiMulti
-  while(wifiMulti.run() != WL_CONNECTED){
-    Serial.print(".");
-    delay(1000);
+static void ringPush(const char* json) {
+  if (offlineRing.count == RING_CAP) {
+    // Overwrite oldest frame when full
+    offlineRing.head = (offlineRing.head + 1) % RING_CAP;
+    offlineRing.count--;
   }
-
-  // Conexion WiFi exitosa 
-  Serial.print("Se conecto a WiFi: ");
-  Serial.print(WiFi.SSID());
-  Serial.print(" -  ");
-  Serial.println(WiFi.localIP());
-  lcd.clear();
-  lcd.print("Conectado a");
-  lcd.setCursor(0, 1);
-  lcd.print("WiFi");
-  lcd.setCursor(0, 0);
-  delay(1000);
-
-  // Conexion al broker MQTT
-  Serial.print("Conectando a MQTT***");
-  lcd.clear();
-  lcd.print("Conectando con");
-  lcd.setCursor(0, 1);
-  lcd.print("MQTT......");
-  lcd.setCursor(0, 0);
-  delay(1000);
-  
-
-  // Intenta conectar con el broker MQTT hasta que tenga éxito
-  while(!clienteMQTT.connect(NombreESP)){
-    Serial.print("*");
-    delay(1000);
-  }
-
-  // Conexion MQTT exitosa
-  Serial.println("\nConectado a MQTT");
-  lcd.clear();
-  lcd.print("Conectado a");
-  lcd.setCursor(0,1);
-  lcd.print("MQTT");
-  lcd.setCursor(0, 0);
-  delay(1000);
-  
-  // Suscripcion al topic MQTT
-  clienteMQTT.subscribe("/saludo");
+  strncpy(offlineRing.payloads[offlineRing.tail], json, JSON_BUF_SIZE - 1);
+  offlineRing.payloads[offlineRing.tail][JSON_BUF_SIZE - 1] = '\0';
+  offlineRing.tail = (offlineRing.tail + 1) % RING_CAP;
+  offlineRing.count++;
 }
 
-/////////////////// FUNCIONES MQ-135 ///////////////////////////////////////////////////////////////////
+static bool ringPop(char* out, size_t outSize) {
+  if (offlineRing.count == 0) return false;
+  strncpy(out, offlineRing.payloads[offlineRing.head], outSize - 1);
+  out[outSize - 1] = '\0';
+  offlineRing.head = (offlineRing.head + 1) % RING_CAP;
+  offlineRing.count--;
+  return true;
+}
 
-void MQ135_setup(){ // Funcion que inicializa el sensor MQ135
+// ---------------------------- PERIPHERALS -----------------------------------
+LiquidCrystal lcd(PIN_LCD_RS, PIN_LCD_EN, PIN_LCD_D4, PIN_LCD_D5, PIN_LCD_D6, PIN_LCD_D7);
+DHT dht(PIN_DHT11, DHT11);
+MQUnifiedsensor MQ135(BOARD_NAME, ADC_VOLTAGE_RES, ADC_BITS, PIN_MQ135, MQ_TYPE);
+MAX30105 maxSensor;
 
-  /*
-    Exponential regression:
-  GAS      | a      | b
-  CO       | 605.18 | -3.937  
-  Alcohol  | 77.255 | -3.18 
-  CO2      | 110.47 | -2.862
-  Toluen   | 44.947 | -3.445
-  NH4      | 102.2  | -2.473
-  Aceton   | 34.668 | -3.369
-  */
+// ---------------------------- TIMERS ----------------------------------------
+static unsigned long lastLcdSwitchMs = 0;
+static unsigned long lastEnvReadMs = 0;
+static unsigned long lastAirReadMs = 0;
+static const unsigned long kLcdIntervalMs = 3000;
+static const unsigned long kEnvIntervalMs = 15000;
+static const unsigned long kAirIntervalMs = 10000;
+static int lcdScreenIndex = 0;
+static bool pulseReadPaused = false;
 
-  MQ135.setRegressionMethod(1); // PPM = a*ratio^b
+// ---------------------------- MAX30102 DSP ----------------------------------
+// Matched sampling rate & digital filters (100 Hz)
+static const auto kSamplingRate = maxSensor.SAMPLING_RATE_100SPS;
+static const float kSamplingFrequency = 100.0f;
+static const unsigned long kFingerThreshold = 10000;
+static const unsigned int kFingerCooldownMs = 500;
+static const float kEdgeThreshold = -2000.0f;
+static const float kLowPassCutoff = 5.0f;
+static const float kHighPassCutoff = 0.5f;
+static const int kAveragingSamples = 5;
+static const int kSampleThreshold = 3;
+
+LowPassFilter lpRed(kLowPassCutoff, kSamplingFrequency);
+LowPassFilter lpIr(kLowPassCutoff, kSamplingFrequency);
+HighPassFilter hpRed(kHighPassCutoff, kSamplingFrequency);
+Differentiator diffRed(kSamplingFrequency);
+MovingAverageFilter<kAveragingSamples> avgBpm;
+MovingAverageFilter<kAveragingSamples> avgSpo2;
+MinMaxAvgStatistic statRed;
+MinMaxAvgStatistic statIr;
+
+static const float kSpO2_A = 1.5958422f;
+static const float kSpO2_B = -34.6596622f;
+static const float kSpO2_C = 112.6898759f;
+
+static unsigned long lastHeartbeatMs = 0;
+static unsigned long fingerTimestampMs = 0;
+static bool fingerDetected = false;
+static float lastDiff = NAN;
+static bool crossed = false;
+static unsigned long crossedTimeMs = 0;
+
+// ---------------------------- SENSOR INIT -----------------------------------
+static void initMQ135() {
+  MQ135.setRegressionMethod(1); // PPM = a * ratio^b
   MQ135.setA(605.18);
   MQ135.setB(-3.937);
+  MQ135.init();
 
-  MQ135.init();   // Inicializa el senso
-
-  // Calibración del sensor MQ135 
-  Serial.print("Calibrando, por favor espere");
-  float calcR0 = 0;
-  for(int i = 1; i<=10; i ++)
-  {
-    MQ135.update(); 
-    calcR0 += MQ135.calibrate(RatioMQ135CleanAir);
-    Serial.print(".");
+  float calcR0 = 0.0f;
+  for (int i = 0; i < 10; i++) {
+    MQ135.update();
+    calcR0 += MQ135.calibrate(RATIO_MQ135_CLEAN_AIR);
+    delay(20);
   }
-  MQ135.setR0(calcR0/10);
-  Serial.println("  done!."); 
-
-  // Verificación de errores de calibración 
-  if(isinf(calcR0)) {Serial.println("Precaucion: Problema en conexion, R0 es infinito (Circuito abierto detectado), por favor verifique el cableado y fuente de voltaje"); while(1);}
-  if(calcR0 == 0){Serial.println("Precaucion: Problema en conexion encontrado, R0 es cero (Pin analogico en cortocircuito a tierra) por favor verifique el cableado y fuente de voltaje"); while(1);}
-  MQ135.serialDebug(true);
-}
-
-void MQ135_read(){ // Funcion de lectura de sensor MQ135
-  MQ135.update();  
-  float g = MQ135.readSensor();  
-  if (g > 0) {
-    gas = g; 
-    newCO2Data = true;
+  float avgR0 = calcR0 / 10.0f;
+  bool ok = !isinf(avgR0) && !isnan(avgR0) && avgR0 > 0.0f;
+  if (ok) {
+    MQ135.setR0(avgR0);
   } else {
-    Serial.println("MQ135: Lectura inválida o cero");
-    newCO2Data = false;
+    Serial.println("[WARN] MQ-135 calibration failed; continuing in degraded mode.");
+  }
+
+  portENTER_CRITICAL(&stateMux);
+  sharedState.mq_ok = ok;
+  portEXIT_CRITICAL(&stateMux);
+}
+
+static void initMAX30102() {
+  bool ok = maxSensor.begin() && maxSensor.setSamplingRate(kSamplingRate);
+  if (!ok) {
+    Serial.println("[WARN] MAX30102 not detected; continuing without pulse oximeter.");
+  }
+  portENTER_CRITICAL(&stateMux);
+  sharedState.max_ok = ok;
+  portEXIT_CRITICAL(&stateMux);
+}
+
+static void resetPulseFilters() {
+  diffRed.reset();
+  avgBpm.reset();
+  avgSpo2.reset();
+  lpRed.reset();
+  lpIr.reset();
+  hpRed.reset();
+  statRed.reset();
+  statIr.reset();
+  lastDiff = NAN;
+  crossed = false;
+  lastHeartbeatMs = 0;
+}
+
+// ---------------------------- TELEMETRY ENCODING ----------------------------
+static void enqueueCurrentFrame(bool hasBpm, bool hasSpo2, bool hasTemp, bool hasHum, bool hasAir) {
+  if (telemetryQueue == NULL) return;
+
+  TelemetryFrame frame;
+  portENTER_CRITICAL(&stateMux);
+  frame.has_bpm = hasBpm && sharedState.has_bpm;
+  frame.has_spo2 = hasSpo2 && sharedState.has_spo2;
+  frame.has_temp = hasTemp && sharedState.has_temp;
+  frame.has_hum = hasHum && sharedState.has_hum;
+  frame.has_air = hasAir && sharedState.has_air;
+  frame.bpm = sharedState.bpm;
+  frame.spo2_pct = sharedState.spo2_pct;
+  frame.signal_quality = sharedState.signal_quality;
+  frame.temperature_c = sharedState.temperature_c;
+  frame.humidity_pct = sharedState.humidity_pct;
+  frame.air_quality_ppm = sharedState.air_quality_ppm;
+  frame.max_ok = sharedState.max_ok;
+  frame.dht_ok = sharedState.dht_ok;
+  frame.mq_ok = sharedState.mq_ok;
+  frame.mq_warmup = sharedState.mq_warmup;
+  frame.finger_detected = sharedState.finger_detected;
+  portEXIT_CRITICAL(&stateMux);
+  frame.uptime_ms = millis();
+
+  xQueueSend(telemetryQueue, &frame, 0);
+}
+
+static void formatTelemetryJson(const TelemetryFrame& f, char* out, size_t outSize) {
+  seqCounter++;
+  char metricsBuf[256] = "{";
+  bool first = true;
+
+  auto appendFloat = [&](const char* key, float val, const char* fmt) {
+    if (!isfinite(val)) return;
+    char kv[64];
+    snprintf(kv, sizeof(kv), "%s\"%s\":", first ? "" : ",", key);
+    strncat(metricsBuf, kv, sizeof(metricsBuf) - strlen(metricsBuf) - 1);
+    snprintf(kv, sizeof(kv), fmt, val);
+    strncat(metricsBuf, kv, sizeof(metricsBuf) - strlen(metricsBuf) - 1);
+    first = false;
+  };
+
+  if (f.has_bpm) appendFloat("bpm", f.bpm, "%.1f");
+  if (f.has_spo2) appendFloat("spo2_pct", f.spo2_pct, "%.1f");
+  if (f.has_bpm || f.has_spo2) appendFloat("signal_quality", f.signal_quality, "%.2f");
+  if (f.has_temp) appendFloat("temperature_c", f.temperature_c, "%.1f");
+  if (f.has_hum) appendFloat("humidity_pct", f.humidity_pct, "%.1f");
+  if (f.has_air) appendFloat("air_quality_ppm", f.air_quality_ppm, "%.2f");
+  strncat(metricsBuf, "}", sizeof(metricsBuf) - strlen(metricsBuf) - 1);
+
+  snprintf(
+    out,
+    outSize,
+    "{\"device_id\":\"%s\",\"seq\":%lu,\"uptime_ms\":%lu,"
+    "\"metrics\":%s,"
+    "\"sensor_status\":{\"max30102\":%s,\"dht11\":%s,\"mq135\":%s,"
+    "\"mq135_warmup\":%s,\"finger_detected\":%s}}",
+    DEVICE_ID,
+    (unsigned long)seqCounter,
+    (unsigned long)f.uptime_ms,
+    metricsBuf,
+    f.max_ok ? "true" : "false",
+    f.dht_ok ? "true" : "false",
+    f.mq_ok ? "true" : "false",
+    f.mq_warmup ? "true" : "false",
+    f.finger_detected ? "true" : "false"
+  );
+}
+
+// ---------------------------- NON-BLOCKING NETWORK --------------------------
+static void maintainNetworkNonBlocking() {
+  if (mqttClient.connected()) {
+    mqttClient.loop();
+    reconnectBackoffMs = 1000;
+    return;
+  }
+
+  unsigned long now = millis();
+  if (now < nextReconnectAttemptMs) {
+    return;
+  }
+
+  if (wifiMulti.run() != WL_CONNECTED) {
+    Serial.println("[NET] WiFi disconnected; scheduling retry...");
+    nextReconnectAttemptMs = now + reconnectBackoffMs;
+    reconnectBackoffMs = min(reconnectBackoffMs * 2, kMaxBackoffMs);
+    return;
+  }
+
+  Serial.print("[NET] Connecting MQTT broker ");
+  Serial.println(MQTT_BROKER_HOST);
+  bool connected = false;
+  if (strlen(MQTT_USERNAME) > 0) {
+    connected = mqttClient.connect(DEVICE_ID, MQTT_USERNAME, MQTT_PASSWORD);
+  } else {
+    connected = mqttClient.connect(DEVICE_ID);
+  }
+
+  if (connected) {
+    Serial.println("[NET] MQTT connected.");
+    char statusPayload[128];
+    snprintf(statusPayload, sizeof(statusPayload), "{\"device_id\":\"%s\",\"status\":\"online\"}", DEVICE_ID);
+    mqttClient.publish(topicStatus, statusPayload, true, 1);
+    reconnectBackoffMs = 1000;
+    nextReconnectAttemptMs = 0;
+
+    // Flush store-and-forward ring buffer
+    char buffered[JSON_BUF_SIZE];
+    while (mqttClient.connected() && ringPop(buffered, sizeof(buffered))) {
+      mqttClient.publish(topicTelemetry, buffered, false, 1);
+      mqttClient.loop();
+    }
+  } else {
+    Serial.println("[NET] MQTT connect failed; backing off.");
+    nextReconnectAttemptMs = now + reconnectBackoffMs;
+    reconnectBackoffMs = min(reconnectBackoffMs * 2, kMaxBackoffMs);
   }
 }
 
-/////////////////// FUNCIONES DHT11 ///////////////////////////////////////////////////////////////////
+static void publishOrBuffer(const TelemetryFrame& frame) {
+  char json[JSON_BUF_SIZE];
+  formatTelemetryJson(frame, json, sizeof(json));
 
-void DHT11_read(){ // Funcion de lectura DHT11
+  if (mqttClient.connected()) {
+    if (!mqttClient.publish(topicTelemetry, json, false, 1)) {
+      ringPush(json);
+    }
+  } else {
+    ringPush(json);
+  }
+}
+
+// ---------------------------- SENSOR TASKS ----------------------------------
+static void processMAX30102Sample() {
+  auto sample = maxSensor.readSample(25);
+  if (!sample.valid) {
+    return;
+  }
+
+  unsigned long now = millis();
+  if (sample.red > kFingerThreshold) {
+    if (now - fingerTimestampMs > kFingerCooldownMs) {
+      fingerDetected = true;
+    }
+  } else {
+    resetPulseFilters();
+    fingerDetected = false;
+    fingerTimestampMs = now;
+    portENTER_CRITICAL(&stateMux);
+    sharedState.finger_detected = false;
+    portEXIT_CRITICAL(&stateMux);
+    return;
+  }
+
+  portENTER_CRITICAL(&stateMux);
+  sharedState.finger_detected = true;
+  portEXIT_CRITICAL(&stateMux);
+
+  float redFiltered = lpRed.process(sample.red);
+  float irFiltered = lpIr.process(sample.ir);
+  statRed.process(redFiltered);
+  statIr.process(irFiltered);
+
+  float acRed = hpRed.process(redFiltered);
+  float currentDiff = diffRed.process(acRed);
+
+  if (!isnan(currentDiff) && !isnan(lastDiff)) {
+    if (lastDiff > 0.0f && currentDiff < 0.0f) {
+      crossed = true;
+      crossedTimeMs = now;
+    }
+    if (currentDiff > 0.0f) {
+      crossed = false;
+    }
+
+    if (crossed && currentDiff < kEdgeThreshold) {
+      if (lastHeartbeatMs != 0 && (crossedTimeMs - lastHeartbeatMs) > 300) {
+        float instantBpm = 60000.0f / (float)(crossedTimeMs - lastHeartbeatMs);
+        float redAvg = statRed.average();
+        float irAvg = statIr.average();
+        float rRed = (redAvg > 0.0f) ? (statRed.maximum() - statRed.minimum()) / redAvg : 0.0f;
+        float rIr = (irAvg > 0.0f) ? (statIr.maximum() - statIr.minimum()) / irAvg : 0.0f;
+        float rVal = (rIr > 0.0f) ? (rRed / rIr) : 0.0f;
+        float instantSpo2 = kSpO2_A * rVal * rVal + kSpO2_B * rVal + kSpO2_C;
+
+        if (instantBpm >= 35.0f && instantBpm <= 220.0f && instantSpo2 >= 70.0f && instantSpo2 <= 100.0f) {
+          float smoothedBpm = avgBpm.process(instantBpm);
+          float smoothedSpo2 = avgSpo2.process(instantSpo2);
+          float sqi = min(1.0f, (float)avgBpm.count() / (float)kAveragingSamples);
+
+          if (avgBpm.count() >= kSampleThreshold) {
+            portENTER_CRITICAL(&stateMux);
+            sharedState.has_bpm = true;
+            sharedState.has_spo2 = true;
+            sharedState.bpm = smoothedBpm;
+            sharedState.spo2_pct = min(100.0f, max(70.0f, smoothedSpo2));
+            sharedState.signal_quality = sqi;
+            portEXIT_CRITICAL(&stateMux);
+            enqueueCurrentFrame(true, true, false, false, false);
+          }
+        }
+        statRed.reset();
+        statIr.reset();
+      }
+      crossed = false;
+      lastHeartbeatMs = crossedTimeMs;
+    }
+  }
+  lastDiff = currentDiff;
+}
+
+void TaskMAX30102(void* pvParameters) {
+  (void)pvParameters;
+  for (;;) {
+    bool maxOk = false;
+    portENTER_CRITICAL(&stateMux);
+    maxOk = sharedState.max_ok;
+    portEXIT_CRITICAL(&stateMux);
+
+    if (maxOk) {
+      processMAX30102Sample();
+      vTaskDelay(pdMS_TO_TICKS(5)); // Keeps 100 SPS FIFO drained accurately
+    } else {
+      vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+  }
+}
+
+static void readDHT11() {
   float t = dht.readTemperature();
   float h = dht.readHumidity();
+  bool ok = !isnan(t) && !isnan(h) && t > -20.0f && t < 70.0f && h >= 0.0f && h <= 100.0f;
 
-  if (!isnan(t) && !isnan(h)) {
-    temperature = t;
-    humidity = h;
-    newTempHumData = true;
+  portENTER_CRITICAL(&stateMux);
+  sharedState.dht_ok = ok;
+  if (ok) {
+    sharedState.temperature_c = t;
+    sharedState.humidity_pct = h;
+    sharedState.has_temp = true;
+    sharedState.has_hum = true;
+  }
+  portEXIT_CRITICAL(&stateMux);
+
+  if (ok) {
+    enqueueCurrentFrame(false, false, true, true, false);
   } else {
-    Serial.println("DHT11: Lectura inválida");
-    newTempHumData = false;
+    Serial.println("[WARN] DHT11 read failed.");
   }
 }
 
-/////////////////// FUNCIONES MAX30105 ///////////////////////////////////////////////////////////////////
+static void readMQ135() {
+  bool warmup = millis() < MQ135_WARMUP_MS;
+  bool mqOk = false;
+  portENTER_CRITICAL(&stateMux);
+  mqOk = sharedState.mq_ok;
+  sharedState.mq_warmup = warmup;
+  portEXIT_CRITICAL(&stateMux);
 
-void MAX30105_setup(){  // Funcion que inicializa el sensor MAX30105
-  if(sensor.begin() && sensor.setSamplingRate(kSamplingRate)) { 
-    Serial.println("Sensor inicializado");
+  if (!mqOk) return;
+
+  MQ135.update();
+  float ppm = MQ135.readSensor();
+  bool valid = isfinite(ppm) && ppm >= 0.0f && ppm <= 5000.0f;
+
+  portENTER_CRITICAL(&stateMux);
+  if (valid && !warmup) {
+    sharedState.air_quality_ppm = ppm;
+    sharedState.has_air = true;
   }
-  else {
-    Serial.println("Sensor no encontrado");  
-    while(1);
-  }  
-}
+  portEXIT_CRITICAL(&stateMux);
 
-void MAX30105_read(){  // Funcion de lectura MAX30105
-  auto sample = sensor.readSample(1000);
-  float current_value_red = sample.red;
-  float current_value_ir = sample.ir;
-
-  // Detecta si el dedo esta presente mediante el valor de la luz IR
-  if(sample.red > kFingerThreshold) {
-    if(millis() - finger_timestamp > kFingerCooldownMs) {
-      finger_detected = true;
-    }
-  }
-  else {
-    // Se reinician los filtros y estadisticas si se retira el dedo
-    differentiator.reset();
-    averager_bpm.reset();
-    averager_r.reset();
-    averager_spo2.reset();
-    low_pass_filter_red.reset();
-    low_pass_filter_ir.reset();
-    high_pass_filter.reset();
-    stat_red.reset();
-    stat_ir.reset();
-    
-    finger_detected = false;
-    finger_timestamp = millis();
-  }
-
-  if(finger_detected) {
-    current_value_red = low_pass_filter_red.process(current_value_red);
-    current_value_ir = low_pass_filter_ir.process(current_value_ir);
-
-    // Calculo de estadisticas de la oximetria
-    stat_red.process(current_value_red);
-    stat_ir.process(current_value_ir);
-
-    // Detecta pulso usando valores de la señal IR
-    float current_value = high_pass_filter.process(current_value_red);
-    float current_diff = differentiator.process(current_value);
-
-    // Verifica que las diferencias sean validad (que no haya NaN)
-    if(!isnan(current_diff) && !isnan(last_diff)) {
-      
-      // Verifica si el pulso pasa por el cruce cero
-      if(last_diff > 0 && current_diff < 0) {
-        crossed = true;
-        crossed_time = millis();
-      }
-      
-      // Reinicia la bandera si la señal sube nuevamente
-      if(current_diff > 0) {
-        crossed = false;
-      }
-  
-      // Detecta que el pulse pase por el umbral de flanco descendente
-      if(crossed && current_diff < kEdgeThreshold) {
-        if(last_heartbeat != 0 && crossed_time - last_heartbeat > 300) {
-          // Mostrar resultados de BMP y SpO2
-          bpm = 60000/(crossed_time - last_heartbeat);
-          float rred = (stat_red.maximum()-stat_red.minimum())/stat_red.average();
-          float rir = (stat_ir.maximum()-stat_ir.minimum())/stat_ir.average();
-          r = rred/rir;
-          spo2 = kSpO2_A * r * r + kSpO2_B * r + kSpO2_C;
-          
-          if(bpm > 50 && bpm < 250) {
-            // Si el promedio esta activado
-            if(kEnableAveraging) {
-              average_bpm = averager_bpm.process(bpm);
-              average_r = averager_r.process(r);
-              average_spo2 = averager_spo2.process(spo2);
-  
-              // Se muestran los resultados solo si hay suficientes muestras para promediar
-              if(averager_bpm.count() >= kSampleThreshold) {
-                newMAX30105Data = true;
-                Serial.print("Heart Rate (average, bpm): ");
-                Serial.println(average_bpm);  
-                Serial.print("SpO2 (average, %): ");
-                Serial.println(average_spo2);   
-              }
-            }
-            else {
-              // Se muestran los valores instantáneos si no se promedia
-              newMAX30105Data = true;
-              Serial.print("Heart Rate (current, bpm): ");
-              Serial.println(bpm); 
-              Serial.print("SpO2 (current, %): ");
-              Serial.println(spo2);
-            }
-          }
-
-          // Reiniciar estadisticas despues de detectar un pulso
-          stat_red.reset();
-          stat_ir.reset();
-        }
-    
-        crossed = false;
-        last_heartbeat = crossed_time;
-      }
-    }
-    last_diff = current_diff;
+  if (valid && !warmup) {
+    enqueueCurrentFrame(false, false, false, false, true);
   }
 }
 
-///////////////////////////////// MQTT publish ////////////////////////////////////////////////////////
+// ---------------------------- OFFLINE-FIRST LCD -----------------------------
+static void displayLocalScreen() {
+  LocalState snap;
+  portENTER_CRITICAL(&stateMux);
+  snap = sharedState;
+  portEXIT_CRITICAL(&stateMux);
 
-void MQTT_publish_temperature_humidity() {  // Funcion que publica en temperatura y humedad en topic MQTT
-  if (!clienteMQTT.connected()) {
-    conectar();
-  }
-  if (newTempHumData) {
-    clienteMQTT.publish(publish_topic, "temperature," + String(temperature));
-    clienteMQTT.publish(publish_topic, "humidity," + String(humidity));
-    newTempHumData = false; 
-  }
-}
-
-void MQTT_publish_co() {        // Funcion que publica concentracion de CO en topic MQTT
-  if (!clienteMQTT.connected()) {
-    conectar();
-  }
-  if (newCO2Data) {
-    clienteMQTT.publish(publish_topic, "CO concentration," + String(gas));
-    newCO2Data = false; 
-  }
-}
-
-void MQTT_publish_max30105() {      // Funcion que publica concentracion de CO en topic MQTT
-  if (!clienteMQTT.connected()) {
-    conectar();
-  }
-  if (finger_detected) {
-    clienteMQTT.publish(publish_topic, "bpm," + String(bpm));
-    clienteMQTT.publish(publish_topic, "SpO2," + String(spo2));
-  }
-}
-
-///////////////////////////////// MQTT suscribe and read + LCD DISPLAY ////////////////////////////////////////////////////////
-
-
-void callback(String &topic, String &payload) { // Funcion que recibe mensaje desde base de datos por MQTT y los manipula para monstrarlos en el LCD
-  Serial.print("\n📥 Mensaje recibido [");
-  Serial.print(topic);
-  Serial.print("]: ");
-  Serial.println(payload);
-
-  int start = 0;
-  while (true) {
-    int end = payload.indexOf('\n', start);         // Busca el fin de una línea en el mensaje
-    String line = payload.substring(start, end);    // Extrae una línea completa del mensaje
-    Serial.print("➡️  ");
-    Serial.println(line);
-
-    int sep = line.indexOf(',');                    // Busca la coma que separa el tipo de dato y el valor
-    if (sep != -1) {
-      String data_type = line.substring(0, sep);    // Extrae el tipo de dato (temperatura, humedad, etc)
-      String value = line.substring(sep + 1);       // Extrae el valor numérico
-
-      // Asigna el valor recibido a la variable correspondiente para mostrarlo en el LCD, pero aqui no lo muestra aun
-      if (data_type == "temperature") lcd_temperature = value + " C";
-      else if (data_type == "humidity") lcd_humidity = value + " %";
-      else if (data_type == "CO concentration") lcd_gas = value + " ppm";
-      else if (data_type == "bpm") lcd_bpm = value + " bpm";
-      else if (data_type == "SpO2") lcd_spo2 = value + " %";
-    }
-
-    if (end == -1) break;
-    start = end + 1;
-  }
-}
-
-
-void displayScreen() { // Funcion que imprime valores de sensores en LCD que llegan de la base de datos
+  const char* netBadge = mqttClient.connected() ? "OK" : "OFF";
   lcd.clear();
+  lcd.setCursor(0, 0);
 
-  if (screenIndex == 0) {             // Muestra valor de temperatura
-    lcd.setCursor(0, 0);
-    lcd.print("Temperatura:");
+  if (lcdScreenIndex == 0) {
+    lcd.printf("Temp       [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    lcd.print(lcd_temperature);
-  } else if (screenIndex == 1) {       // Muestra valor de humedad    
-    lcd.setCursor(0, 0);
-    lcd.print("Humedad:");
+    if (snap.has_temp) lcd.printf("%.1f C", snap.temperature_c);
+    else lcd.print("Sensor N/A");
+  } else if (lcdScreenIndex == 1) {
+    lcd.printf("Humedad    [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    lcd.print(lcd_humidity);
-  } else if (screenIndex == 2) {      // Muestra concentración de CO
-    lcd.setCursor(0, 0);
-    lcd.print("CO:");
+    if (snap.has_hum) lcd.printf("%.1f %% RH", snap.humidity_pct);
+    else lcd.print("Sensor N/A");
+  } else if (lcdScreenIndex == 2) {
+    lcd.printf("Aire (CO)  [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    lcd.print(lcd_gas);
-  } else if (screenIndex == 3) {      // Muestra la frecuencia cardíaca
-    lcd.setCursor(0, 0);
-    lcd.print("Pulso cardiaco:");
+    if (snap.mq_warmup) lcd.print("Precalentando...");
+    else if (snap.has_air) lcd.printf("%.2f ppm", snap.air_quality_ppm);
+    else lcd.print("Sensor N/A");
+  } else if (lcdScreenIndex == 3) {
+    lcd.printf("Pulso      [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    lcd.print(lcd_bpm);
-  } else if (screenIndex == 4) {      // Muestra el nivel de oxígeno en sangre
-    lcd.setCursor(0, 0);
-    lcd.print("Oxigeno (SpO2):");
+    if (!snap.max_ok) lcd.print("Sensor N/A");
+    else if (!snap.finger_detected) lcd.print("Coloque dedo");
+    else if (snap.has_bpm) lcd.printf("%.0f bpm (Q:%.0f%%)", snap.bpm, snap.signal_quality * 100.0f);
+    else lcd.print("Midiendo...");
+  } else {
+    lcd.printf("SpO2       [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    lcd.print(lcd_spo2);
+    if (!snap.max_ok) lcd.print("Sensor N/A");
+    else if (!snap.finger_detected) lcd.print("Coloque dedo");
+    else if (snap.has_spo2) lcd.printf("%.1f %%", snap.spo2_pct);
+    else lcd.print("Midiendo...");
   }
 
-  screenIndex = (screenIndex + 1) % 5;     // Cambia al siguiente valor a mostrar (ciclo de 0 a 4)
+  lcdScreenIndex = (lcdScreenIndex + 1) % 5;
 }
 
-///////////////////////////////// FUNCIONES FreeRTOS ////////////////////////////////////////////////////////
+// ---------------------------- SETUP & LOOP ----------------------------------
+void setup() {
+  Serial.begin(115200);
+  snprintf(topicTelemetry, sizeof(topicTelemetry), "health/devices/%s/telemetry", DEVICE_ID);
+  snprintf(topicStatus, sizeof(topicStatus), "health/devices/%s/status", DEVICE_ID);
 
-void TaskMAX30105(void *pvParameters) {
-  for (;;) {
-    MAX30105_read(); // Lectura del MAX30105 (SpO2 y BPM)
-
-    if (newMAX30105Data) {
-      MQTT_publish_max30105();  // Publicar valores del sensor
-      newMAX30105Data = false;
-    }
-
-    vTaskDelay(pdMS_TO_TICKS(100)); // Espera entre lecturas 
-  }
-}
-
-//////////////////////////// SETUP & LOOP /////////////////////////////////////////////////////////////
-
-void setup() { 
-  Serial.begin(115200);     // Inicializa la comunicación serial a 115200 baudios
-  
-  MQ135_setup();            // Inicializa el sensor de calidad del aire MQ135  
-  dht.begin();              // Inicializa el sensor de temperatura y humedad DHT
-  MAX30105_setup();         // Inicializa el sensor de pulso y oxígeno MAX30105
-
-  lcd.begin(16,2);          // Inicializa la pantalla LCD de 16 columnas y 2 filas
+  lcd.begin(16, 2);
   lcd.clear();
-  lcd.print("Comenzando...");
-  delay(1000);
+  lcd.print("Health Station");
+  lcd.setCursor(0, 1);
+  lcd.print("v2.0 Iniciando..");
 
-  wifiMulti.addAP(ssid, password);      // red y clave de internet casa (estos datos se modifican en el archivo data.h)
-  wifiMulti.addAP(ssid2, password2);    // red y clave de internet UP (estos datos se modifican en el archivo data.h)
-  WiFi.mode(WIFI_STA);                      // Configura el WiFi en modo estación (cliente)
+  telemetryQueue = xQueueCreate(16, sizeof(TelemetryFrame));
 
-  clienteMQTT.begin(BrokerMQTT, net);       // Inicializa el cliente MQTT
-  clienteMQTT.onMessage(callback);          // Recepcion de mensaje MQTT
-  conectar();                               //Conexion MQTT y Wifi
-  clienteMQTT.subscribe(suscribe_topic);    //Suscripcion a MQTT topic
+  dht.begin();
+  initMQ135();
+  initMAX30102();
 
-  
-  Serial.println();
+  WiFi.mode(WIFI_STA);
+  if (strlen(WIFI_SSID_1) > 0) wifiMulti.addAP(WIFI_SSID_1, WIFI_PASS_1);
+  if (strlen(WIFI_SSID_2) > 0) wifiMulti.addAP(WIFI_SSID_2, WIFI_PASS_2);
 
-  xTaskCreatePinnedToCore(        // Crea tarea para sensor MAX30105Task
-    TaskMAX30105,
-    "MAX30105Task",
+#if USE_TLS
+  netClient.setCACert(MQTT_CA_CERT);
+#endif
+  mqttClient.begin(MQTT_BROKER_HOST, MQTT_BROKER_PORT, netClient);
+
+  static char lwtPayload[128];
+  snprintf(lwtPayload, sizeof(lwtPayload), "{\"device_id\":\"%s\",\"status\":\"offline\"}", DEVICE_ID);
+  mqttClient.setWill(topicStatus, lwtPayload, true, 1);
+
+  xTaskCreatePinnedToCore(
+    TaskMAX30102,
+    "MAX30102Task",
     4096,
     NULL,
-    1,
-    &TaskMAX30105Handle,
+    2,
+    &taskMaxHandle,
     1
   );
-
 }
 
 void loop() {
-
-  // Parte que controla la pausa y reanudacion del FreeRTOS
   if (Serial.available()) {
-    char c = Serial.read();
-    if (c == 'p' && lecturaActiva) {
-      vTaskSuspend(TaskMAX30105Handle);
-      lecturaActiva = false;
-      Serial.println("Lectura MAX30105 pausada.");
-    } else if (c == 'r' && !lecturaActiva) {
-      vTaskResume(TaskMAX30105Handle);
-      lecturaActiva = true;
-      Serial.println("Lectura MAX30105 reanudada.");
+    char cmd = (char)Serial.read();
+    if (cmd == 'p' && !pulseReadPaused && taskMaxHandle != NULL) {
+      vTaskSuspend(taskMaxHandle);
+      pulseReadPaused = true;
+      Serial.println("[CTRL] MAX30102 paused.");
+    } else if (cmd == 'r' && pulseReadPaused && taskMaxHandle != NULL) {
+      vTaskResume(taskMaxHandle);
+      pulseReadPaused = false;
+      Serial.println("[CTRL] MAX30102 resumed.");
     }
   }
 
-  clienteMQTT.loop();
+  maintainNetworkNonBlocking();
 
-  if (millis() - lastUpdateTime > updateInterval) { // Actualiza la pantalla cada cierto tiempo (definido en updateInterval)
-    displayScreen();
-    lastUpdateTime = millis();
+  unsigned long now = millis();
+  if (now - lastEnvReadMs >= kEnvIntervalMs) {
+    lastEnvReadMs = now;
+    readDHT11();
+  }
+  if (now - lastAirReadMs >= kAirIntervalMs) {
+    lastAirReadMs = now;
+    readMQ135();
   }
 
-  unsigned long currentMillis = millis();
-  
-  if(currentMillis - lastTempHumRead >= tempHumInterval){ // Lectura de Temp & Humedad cada cierto tiempo (definido en tempHumInterval)
-    lastTempHumRead = currentMillis;
-    DHT11_read();            
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.println(" C ");
-    Serial.print("Humidity: ");
-    Serial.print(humidity);
-    Serial.println(" % ");
-    newTempHumData = true;  
+  // Drain FreeRTOS queue from single socket-owning thread
+  TelemetryFrame frame;
+  while (telemetryQueue != NULL && xQueueReceive(telemetryQueue, &frame, 0) == pdTRUE) {
+    publishOrBuffer(frame);
   }
 
-  if (currentMillis - lastCORead >= coInterval) { // Lectura de CO2 cada cierto tiempo (definido en coInterval)
-    lastCORead = currentMillis;
-    MQ135_read();          
-    Serial.print("CO Concentracion: ");
-    Serial.print(gas);
-    Serial.println(" ppm");  
-    newCO2Data = true;     
+  if (now - lastLcdSwitchMs >= kLcdIntervalMs) {
+    lastLcdSwitchMs = now;
+    displayLocalScreen();
   }
-
-  if (newTempHumData) {
-    MQTT_publish_temperature_humidity();  // Publicar temperatura y humedad
-    newTempHumData = false;
-  }
-
-  if (newCO2Data) {
-    MQTT_publish_co();  // Publica concentracion de CO2
-    newCO2Data = false;
-  }
-
 }
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////

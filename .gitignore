@@ -1,0 +1,28 @@
+# Secrets & device config
+.env
+.env.local
+Firmware/config.h
+
+# Local SQLite databases
+*.db
+*.db-wal
+*.db-shm
+data/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Mosquitto runtime data/logs
+mosquitto/data/
+mosquitto/log/
+
+# OS & Editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

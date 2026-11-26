@@ -1,0 +1,69 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: health-mosquitto
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-t", "healthcheck/ping", "-m", "ok", "-h", "localhost"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  health-backend:
+    build: .
+    container_name: health-backend
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${HEALTH_PORT:-8095}:8095"
+    environment:
+      HEALTH_BIND_HOST: 0.0.0.0
+      HEALTH_PORT: 8095
+      HEALTH_DB_PATH: /app/data/health_station.db
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      ALERT_COOLDOWN_SEC: ${ALERT_COOLDOWN_SEC:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - health_data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+
+  health-simulator:
+    build: .
+    container_name: health-simulator
+    profiles: ["sim"]
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      SIM_INTERVAL_SEC: ${SIM_INTERVAL_SEC:-2.0}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    command: ["python", "-m", "backend.simulator"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+  health_data:
