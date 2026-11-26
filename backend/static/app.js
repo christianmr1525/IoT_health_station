@@ -8,39 +8,39 @@
       unit: "%",
       range: "Normal ≥ 95%",
       thresholds: [
-        { val: 95.0, label: "95% mín", color: "var(--warn)" },
-        { val: 90.0, label: "90% crít", color: "var(--crit)" },
+        { val: 95.0, label: "95% min", color: "var(--warn)" },
+        { val: 90.0, label: "90% crit", color: "var(--crit)" },
       ],
     },
     bpm: {
-      label: "Pulso Cardíaco",
+      label: "Heart Rate",
       unit: "bpm",
       range: "Normal 50–100",
       thresholds: [
         { val: 100.0, label: "100 bpm", color: "var(--warn)" },
-        { val: 120.0, label: "120 crít", color: "var(--crit)" },
+        { val: 120.0, label: "120 crit", color: "var(--crit)" },
       ],
     },
     air_quality_ppm: {
-      label: "Aire / CO",
+      label: "Air / CO",
       unit: "ppm",
       range: "Normal ≤ 10 ppm",
       thresholds: [
         { val: 10.0, label: "10 ppm", color: "var(--warn)" },
-        { val: 35.0, label: "35 crít", color: "var(--crit)" },
+        { val: 35.0, label: "35 crit", color: "var(--crit)" },
       ],
     },
     temperature_c: {
-      label: "Temperatura",
+      label: "Temperature",
       unit: "°C",
-      range: "Confort 18–28 °C",
+      range: "Comfort 18–28 °C",
       thresholds: [
         { val: 28.0, label: "28 °C", color: "var(--warn)" },
         { val: 18.0, label: "18 °C", color: "var(--warn)" },
       ],
     },
     humidity_pct: {
-      label: "Humedad",
+      label: "Humidity",
       unit: "% RH",
       range: "Ideal 30–60%",
       thresholds: [
@@ -76,7 +76,7 @@
     if (dark) document.documentElement.setAttribute("data-theme", "dark");
     else document.documentElement.removeAttribute("data-theme");
     const btn = document.getElementById("theme-toggle");
-    if (btn) btn.textContent = dark ? "Claro" : "Oscuro";
+    if (btn) btn.textContent = dark ? "Light" : "Dark";
   };
 
   let storedTheme = null;
@@ -105,8 +105,8 @@
   };
 
   const sevLabel = (sev) => {
-    if (sev === "critical") return "CRÍTICO";
-    if (sev === "warning") return "ALERTA";
+    if (sev === "critical") return "CRITICAL";
+    if (sev === "warning") return "WARNING";
     return "NORMAL";
   };
 
@@ -117,9 +117,9 @@
   };
 
   const statusLabel = (st) => {
-    if (st === "online") return "EN LÍNEA";
-    if (st === "stale") return "DESACTUALIZADO";
-    return "SIN SEÑAL";
+    if (st === "online") return "ONLINE";
+    if (st === "stale") return "STALE";
+    return "OFFLINE";
   };
 
   const formatTime = (iso, withSeconds = true) => {
@@ -156,7 +156,7 @@
     if (!totalsEl) return;
     const onlineCount = devices.filter((d) => d.status === "online").length;
     const activeAlerts = devices.reduce((acc, d) => acc + (d.active_alerts || 0), 0);
-    totalsEl.textContent = `En línea: ${onlineCount}/${devices.length} · Alertas: ${activeAlerts} · DLQ: ${totals.dlq_rows ?? 0}`;
+    totalsEl.textContent = `Online: ${onlineCount}/${devices.length} · Alerts: ${activeAlerts} · DLQ: ${totals.dlq_rows ?? 0}`;
   };
 
   const renderTabs = () => {
@@ -174,7 +174,7 @@
             </button>`;
           })
           .join("")
-      : '<span class="meta-detail">Esperando telemetría de estaciones…</span>';
+      : '<span class="meta-detail">Waiting for station telemetry…</span>';
   };
 
   const renderSnapshot = (snap) => {
@@ -200,7 +200,7 @@
     const gridEl = document.getElementById("metrics-grid");
 
     if (!dev) {
-      if (nameEl) nameEl.textContent = "Sin estación seleccionada";
+      if (nameEl) nameEl.textContent = "No station selected";
       if (gridEl) gridEl.innerHTML = "";
       return;
     }
@@ -212,7 +212,7 @@
       statusEl.textContent = statusLabel(dev.status);
     }
     if (ageEl) {
-      ageEl.textContent = `Último paquete: hace ${dev.age_sec ?? 0}s · seq #${dev.last_seq ?? "—"}`;
+      ageEl.textContent = `Last packet: ${dev.age_sec ?? 0}s ago · seq #${dev.last_seq ?? "—"}`;
     }
 
     if (healthEl) {
@@ -225,10 +225,10 @@
       healthEl.innerHTML = chips
         .map(([label, ok]) => {
           if (!isOnline) {
-            return `<span class="pill pill-muted">${label}: SIN SEÑAL</span>`;
+            return `<span class="pill pill-muted">${label}: OFFLINE</span>`;
           }
           const cls = ok === true ? "pill-ok" : ok === false ? "pill-crit" : "pill-muted";
-          const state = ok === true ? "OK" : ok === false ? "FALLA" : "N/A";
+          const state = ok === true ? "OK" : ok === false ? "FAULT" : "N/A";
           return `<span class="pill ${cls}">${label}: ${state}</span>`;
         })
         .join("");
@@ -293,7 +293,7 @@
 
     if (series.length < 2) {
       chartCoords = [];
-      svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="var(--muted)" font-size="12">Sin suficientes puntos en esta ventana</text>';
+      svg.innerHTML = '<text x="50%" y="50%" text-anchor="middle" fill="var(--muted)" font-size="12">Insufficient samples in this window</text>';
       if (readout) readout.textContent = "";
       return;
     }
@@ -377,7 +377,7 @@
     `;
 
     const last = series[series.length - 1];
-    defaultReadoutText = `${series.length} muestras · Último: ${last.val.toFixed(1)} ${meta.unit} (${formatTime(last.ts)}) · Mín: ${Math.min(...vals).toFixed(1)} · Máx: ${Math.max(...vals).toFixed(1)}`;
+    defaultReadoutText = `${series.length} samples · Latest: ${last.val.toFixed(1)} ${meta.unit} (${formatTime(last.ts)}) · Min: ${Math.min(...vals).toFixed(1)} · Max: ${Math.max(...vals).toFixed(1)}`;
     if (readout) readout.textContent = defaultReadoutText;
   };
 
@@ -391,7 +391,7 @@
       : (alerts || []);
 
     if (visible.length === 0) {
-      listEl.innerHTML = '<p class="meta-detail">Sin alertas pendientes en este filtro.</p>';
+      listEl.innerHTML = '<p class="meta-detail">No pending alerts in this view.</p>';
       return;
     }
 
@@ -399,8 +399,8 @@
       .map((a) => {
         const ackCls = a.acknowledged ? "is-acked" : "";
         const btn = a.acknowledged
-          ? `<span class="pill pill-muted">Atendida</span>`
-          : `<button class="btn" data-ack-id="${a.id}" type="button">Atender</button>`;
+          ? `<span class="pill pill-muted">Acknowledged</span>`
+          : `<button class="btn" data-ack-id="${a.id}" type="button">Acknowledge</button>`;
         return `<div class="alert-item sev-${esc(a.severity)} ${ackCls}">
           <div class="alert-head">
             <span class="pill ${sevPillClass(a.severity)}">${sevLabel(a.severity)} · ${esc(a.device_id)}</span>
@@ -595,7 +595,7 @@
     es.addEventListener("open", () => {
       if (badge) {
         badge.className = "pill pill-ok";
-        badge.textContent = "SSE EN VIVO";
+        badge.textContent = "SSE LIVE";
       }
     });
     es.addEventListener("snapshot", (ev) => {
@@ -624,7 +624,7 @@
     es.addEventListener("error", () => {
       if (badge) {
         badge.className = "pill pill-warn";
-        badge.textContent = "RECONECTANDO…";
+        badge.textContent = "RECONNECTING…";
       }
     });
   };

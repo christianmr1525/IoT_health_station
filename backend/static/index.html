@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IoT Health Station · Monitor Clínico y Ambiental</title>
+  <title>IoT Health Station · Clinical &amp; Environmental Monitor</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -12,21 +12,21 @@
       <div class="brand-mark" aria-hidden="true">HS</div>
       <div class="brand-text">
         <h1>IoT Health &amp; Environment Station</h1>
-        <p class="subtitle">Monitor biomédico &amp; calidad ambiental · v2.0</p>
+        <p class="subtitle">Biomedical &amp; Indoor Air Quality Monitor · v2.0</p>
       </div>
     </div>
     <div class="topbar-actions">
-      <span id="conn-badge" class="pill pill-muted">CONECTANDO…</span>
-      <span id="demo-badge" class="pill pill-info hidden">SIMULACIÓN</span>
-      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Cambiar tema">Oscuro</button>
+      <span id="conn-badge" class="pill pill-muted">CONNECTING…</span>
+      <span id="demo-badge" class="pill pill-info hidden">SIMULATION</span>
+      <button id="theme-toggle" class="btn btn-ghost" type="button" aria-label="Toggle theme">Dark</button>
     </div>
   </header>
 
   <main class="container">
-    <section class="panel control-strip" aria-label="Control de estaciones y hardware">
+    <section class="panel control-strip" aria-label="Station and hardware control">
       <div class="strip-row strip-top">
         <div class="strip-label-group">
-          <span class="strip-label">ESTACIONES</span>
+          <span class="strip-label">STATIONS</span>
           <div id="station-tabs" class="station-tabs"></div>
         </div>
         <div id="totals-summary" class="totals-row num"></div>
@@ -41,21 +41,21 @@
       </div>
     </section>
 
-    <section class="cards-grid" id="metrics-grid" aria-label="Signos vitales y ambiente"></section>
+    <section class="cards-grid" id="metrics-grid" aria-label="Vitals and environment"></section>
 
     <section class="split-layout">
-      <section class="panel chart-panel" aria-label="Tendencia histórica">
+      <section class="panel chart-panel" aria-label="Historical trend">
         <div class="section-head">
-          <h2>Tendencia Histórica</h2>
+          <h2>Historical Trend</h2>
           <div class="controls-row">
-            <select id="metric-select" class="select" aria-label="Métrica">
+            <select id="metric-select" class="select" aria-label="Metric">
               <option value="spo2_pct">SpO2 (%)</option>
-              <option value="bpm">Pulso (bpm)</option>
-              <option value="air_quality_ppm">Calidad de aire / CO (ppm)</option>
-              <option value="temperature_c">Temperatura (°C)</option>
-              <option value="humidity_pct">Humedad (% RH)</option>
+              <option value="bpm">Heart Rate (bpm)</option>
+              <option value="air_quality_ppm">Air Quality / CO (ppm)</option>
+              <option value="temperature_c">Temperature (°C)</option>
+              <option value="humidity_pct">Humidity (% RH)</option>
             </select>
-            <div class="window-group" role="group" aria-label="Ventana de tiempo">
+            <div class="window-group" role="group" aria-label="Time window">
               <button class="btn btn-tab is-active" data-minutes="15" type="button">15m</button>
               <button class="btn btn-tab" data-minutes="60" type="button">1h</button>
               <button class="btn btn-tab" data-minutes="360" type="button">6h</button>
@@ -63,22 +63,22 @@
           </div>
         </div>
         <div class="chart-wrap">
-          <svg id="history-chart" class="history-svg" viewBox="0 0 760 220" preserveAspectRatio="none" role="img" aria-label="Gráfica histórica"></svg>
+          <svg id="history-chart" class="history-svg" viewBox="0 0 760 220" preserveAspectRatio="none" role="img" aria-label="Historical trend chart"></svg>
           <div id="chart-readout" class="chart-readout num"></div>
         </div>
       </section>
 
-      <section class="panel alerts-panel" aria-label="Alertas clínicas">
+      <section class="panel alerts-panel" aria-label="Clinical alerts">
         <div class="section-head">
-          <h2>Alertas</h2>
+          <h2>Alerts</h2>
           <div class="controls-row">
             <label class="toggle-inline">
               <input type="checkbox" id="filter-current-station" checked>
-              <span>Solo estación</span>
+              <span>Station only</span>
             </label>
             <label class="toggle-inline">
               <input type="checkbox" id="show-acked">
-              <span>Ver atendidas</span>
+              <span>Show acknowledged</span>
             </label>
           </div>
         </div>
@@ -88,7 +88,7 @@
   </main>
 
   <footer class="footer">
-    <p id="disclaimer-text">Herramienta preventiva de bienestar y monitoreo ambiental. No es un dispositivo médico certificado.</p>
+    <p id="disclaimer-text">Preventive wellness and environmental monitoring tool only. Not a certified medical device.</p>
   </footer>
 
   <script src="/static/app.js"></script>
