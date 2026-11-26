@@ -530,30 +530,30 @@ static void displayLocalScreen() {
     if (snap.has_temp) lcd.printf("%.1f C", snap.temperature_c);
     else lcd.print("Sensor N/A");
   } else if (lcdScreenIndex == 1) {
-    lcd.printf("Humedad    [%3s]", netBadge);
+    lcd.printf("Humidity   [%3s]", netBadge);
     lcd.setCursor(0, 1);
     if (snap.has_hum) lcd.printf("%.1f %% RH", snap.humidity_pct);
     else lcd.print("Sensor N/A");
   } else if (lcdScreenIndex == 2) {
-    lcd.printf("Aire (CO)  [%3s]", netBadge);
+    lcd.printf("Air (CO)   [%3s]", netBadge);
     lcd.setCursor(0, 1);
-    if (snap.mq_warmup) lcd.print("Precalentando...");
+    if (snap.mq_warmup) lcd.print("Warming up...");
     else if (snap.has_air) lcd.printf("%.2f ppm", snap.air_quality_ppm);
     else lcd.print("Sensor N/A");
   } else if (lcdScreenIndex == 3) {
-    lcd.printf("Pulso      [%3s]", netBadge);
+    lcd.printf("Heart Rate [%3s]", netBadge);
     lcd.setCursor(0, 1);
     if (!snap.max_ok) lcd.print("Sensor N/A");
-    else if (!snap.finger_detected) lcd.print("Coloque dedo");
+    else if (!snap.finger_detected) lcd.print("Place finger");
     else if (snap.has_bpm) lcd.printf("%.0f bpm (Q:%.0f%%)", snap.bpm, snap.signal_quality * 100.0f);
-    else lcd.print("Midiendo...");
+    else lcd.print("Measuring...");
   } else {
     lcd.printf("SpO2       [%3s]", netBadge);
     lcd.setCursor(0, 1);
     if (!snap.max_ok) lcd.print("Sensor N/A");
-    else if (!snap.finger_detected) lcd.print("Coloque dedo");
+    else if (!snap.finger_detected) lcd.print("Place finger");
     else if (snap.has_spo2) lcd.printf("%.1f %%", snap.spo2_pct);
-    else lcd.print("Midiendo...");
+    else lcd.print("Measuring...");
   }
 
   lcdScreenIndex = (lcdScreenIndex + 1) % 5;
@@ -569,7 +569,7 @@ void setup() {
   lcd.clear();
   lcd.print("Health Station");
   lcd.setCursor(0, 1);
-  lcd.print("v2.0 Iniciando..");
+  lcd.print("v2.0 Starting...");
 
   telemetryQueue = xQueueCreate(16, sizeof(TelemetryFrame));
 

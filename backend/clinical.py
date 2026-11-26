@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any
 
 WELLNESS_DISCLAIMER = (
-    "Preventive wellness & environmental monitoring tool only. "
+    "Preventive wellness and environmental monitoring tool only. "
     "Not a certified medical device; do not use for clinical diagnosis or emergency triage."
 )
 
@@ -33,7 +33,7 @@ class ClinicalFinding:
 def evaluate_metric(metric: str, value: float) -> ClinicalFinding:
     """Evaluate a single biomedical or environmental reading with clinical thresholds."""
     if metric == "spo2_pct":
-        # Clinical standard: <90% is severe hypoxemia, 90-94.9% is mild hypoxemia/warning
+        # Clinical standard: <90% severe hypoxemia, 90-94.9% mild hypoxemia/warning
         if value < 90.0:
             return ClinicalFinding(
                 metric, Severity.CRITICAL, value, "%", "HYPOXEMIA_SEVERE",

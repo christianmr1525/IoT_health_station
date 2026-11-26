@@ -126,6 +126,11 @@ def _make_handler(
                 return False
 
             if require_csrf:
+                sec_fetch_site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+                if sec_fetch_site == "cross-site":
+                    self._send_json({"error": "Cross-site POST rejected"}, HTTPStatus.FORBIDDEN)
+                    return False
+
                 origin = (self.headers.get("Origin") or "").strip().lower()
                 if origin and origin not in allowed_origins:
                     self._send_json({"error": "Cross-origin POST rejected"}, HTTPStatus.FORBIDDEN)
@@ -296,6 +301,14 @@ def _make_handler(
             ack_match = _ACK_PATH_RE.match(path)
             if not ack_match:
                 self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+                return
+
+            ctype = (self.headers.get("Content-Type") or "").strip().lower()
+            if not ctype.startswith("application/json"):
+                self._send_json(
+                    {"error": "Content-Type must be application/json"},
+                    HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+                )
                 return
 
             try:

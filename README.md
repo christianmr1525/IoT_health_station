@@ -100,11 +100,15 @@ For real-world deployment beyond the university prototype PCB (`Hardware/`):
 
 ---
 
-## Testing
+## Security & Testing
+
+- **Localhost & Browser Hardening**: Bound strictly to `127.0.0.1` by default, Host-header allowlist (anti-DNS-rebinding), strict `Origin` + `Sec-Fetch-Site: cross-site` + `X-CSRF-Token` checks on `POST`, strict `Content-Type: application/json` enforcement (`HTTP 415`), strict CSP (`script-src 'self'`), no wildcard CORS, path-traversal guards, per-IP `TokenBucketRateLimiter` (`HTTP 429`), and `Idempotency-Key` replay/409 protection.
+- **Ingestion & Container Hardening**: Regex-validated `device_id`, topic-to-payload anti-spoofing, 16 KB/depth-6 JSON guard, `NaN`/`Infinity` and prototype-pollution key rejection, Dead-Letter Queue (`dlq`), SQLite WAL parameterized queries, `_LogSanitizingFilter`, and non-root `UID 10001` `read_only` Docker containers.
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
+*(14/14 unit, clinical-safety, resilience & localhost-security tests passing; GitHub Actions runs `compileall`, `unittest`, `pip-audit`, and `Trivy`.)*
 
 ## License
 
