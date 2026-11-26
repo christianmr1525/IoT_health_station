@@ -20,3 +20,15 @@ jobs:
         run: python -m compileall -q backend tests
       - name: Run unit & security tests
         run: python -m unittest discover -s tests -v
+      - name: Audit Python dependencies (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
+      - name: Scan repository & Docker config (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"

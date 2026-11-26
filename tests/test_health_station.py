@@ -274,10 +274,37 @@ class TestStorageAndWebSecurity(unittest.TestCase):
         code, _, _ = self._request(
             f"/api/alerts/{alert_id}/ack",
             method="POST",
-            headers={"Origin": "https://evil.example", "X-CSRF-Token": self.csrf_token},
+            headers={
+                "Origin": "https://evil.example",
+                "X-CSRF-Token": self.csrf_token,
+                "Content-Type": "application/json",
+            },
             body=b'{"actor":"op"}',
         )
         self.assertEqual(code, 403)
+
+        code, _, _ = self._request(
+            f"/api/alerts/{alert_id}/ack",
+            method="POST",
+            headers={
+                "Sec-Fetch-Site": "cross-site",
+                "X-CSRF-Token": self.csrf_token,
+                "Content-Type": "application/json",
+            },
+            body=b'{"actor":"op"}',
+        )
+        self.assertEqual(code, 403)
+
+        code, _, _ = self._request(
+            f"/api/alerts/{alert_id}/ack",
+            method="POST",
+            headers={
+                "X-CSRF-Token": self.csrf_token,
+                "Content-Type": "text/plain",
+            },
+            body=b'{"actor":"op"}',
+        )
+        self.assertEqual(code, 415)
 
         # 6. Valid POST with Idempotency-Key replay & 409 conflict
         ack_headers = {
