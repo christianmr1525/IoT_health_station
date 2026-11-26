@@ -76,10 +76,13 @@
               <button class="mtab" data-metric="humidity_pct" role="tab" type="button">Humidity</button>
             </div>
           </div>
-          <div class="window-group mono" role="group" aria-label="Time window">
-            <button class="wtab is-active" data-minutes="15" type="button">15m</button>
-            <button class="wtab" data-minutes="60" type="button">1h</button>
-            <button class="wtab" data-minutes="360" type="button">6h</button>
+          <div class="trace-head-right">
+            <div class="window-group mono" role="group" aria-label="Time window">
+              <button class="wtab is-active" data-minutes="15" type="button">15m</button>
+              <button class="wtab" data-minutes="60" type="button">1h</button>
+              <button class="wtab" data-minutes="360" type="button">6h</button>
+            </div>
+            <button id="btn-export-csv" class="btn-export mono" type="button" title="Download visible history as CSV">Export CSV</button>
           </div>
         </div>
         <div class="trace-stage">

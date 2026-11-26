@@ -17,7 +17,7 @@ Full-stack biomedical and indoor air-quality monitoring station built around an 
 
 - **Offline-First Edge Firmware (`Firmware/`)**: Matched 100 Hz MAX30102 FIFO pulse-oximetry sampling with moving average & Signal Quality Index (`SQI`), thread-safe FreeRTOS queue + spinlock separation, local 16×2 LCD updates, 32-frame RAM store-and-forward ring buffer, non-blocking exponential backoff reconnect, and MQTT Last Will & Testament (`LWT`).
 - **Hardened Telemetry Pipeline (`backend/`)**: `paho-mqtt` v2 (`manual_ack`), strict JSON schema/physical-bounds/timestamp validation, prototype-pollution & `NaN` rejection, Dead-Letter Queue (`dlq`), `CircuitBreaker`, `IdempotencyStore`, `TokenBucketRateLimiter`, `_LogSanitizingFilter`, and thread-safe SQLite WAL storage.
-- **Clinical Instrument Web UI (`backend/static/`)**: Asymmetrical hairline layout (Obsidian Dark & Archival Paper Light), physiological range gauges, clinical Y-axis bounds with dashed threshold lines, interactive SVG hover crosshair, station-scoped alert log, and 1-click alert acknowledgement with strict CSP + CSRF protection.
+- **Clinical Instrument Web UI (`backend/static/`)**: Asymmetrical hairline layout (Obsidian Dark & Archival Paper Light), physiological range gauges, clinical Y-axis bounds with dashed threshold lines, interactive SVG hover crosshair, station-scoped alert log, client-side **Export CSV**, and 1-click alert acknowledgement with strict CSP + CSRF protection.
 - **Hardware & CAD Included (`Hardware/`)**: SolidWorks assembly/parts and 3D-printable STL enclosure files for the physical station.
 
 <details>
@@ -191,8 +191,9 @@ Open `http://127.0.0.1:8095` in your browser.
 
 ```bash
 python -m unittest discover -s tests -v
+# Or using Makefile: make test / make lint / make demo
 ```
-*(14/14 unit, clinical-safety, resilience & localhost-security tests passing; GitHub Actions runs `compileall`, `unittest`, `pip-audit`, and `Trivy`.)*
+*(14/14 unit, clinical-safety, resilience & localhost-security tests passing; GitHub Actions runs `ruff`, `compileall`, `unittest`, `pip-audit`, `Trivy`, and ESP32 `arduino-cli` firmware compilation.)*
 
 ---
 

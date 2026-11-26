@@ -372,7 +372,7 @@ static void publishOrBuffer(const TelemetryFrame& frame) {
 // ---------------------------- SENSOR TASKS ----------------------------------
 static void processMAX30102Sample() {
   auto sample = maxSensor.readSample(25);
-  if (!sample.valid) {
+  if (sample.red == 0 && sample.ir == 0) {
     return;
   }
 
